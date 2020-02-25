@@ -1,0 +1,23 @@
+group 'com.github.ilittleangel.notifier'
+version "$version"
+
+apply plugin: 'scala'
+apply plugin: 'application'
+
+repositories {
+    jcenter()
+    mavenCentral()
+}
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+dependencies {
+    compileOnly "org.scala-lang:scala-compiler:$scalaMajor.$scalaMinor"
+    compile "org.scala-lang:scala-library:$scalaMajor.$scalaMinor"
+
+    testCompile "org.scalatest:scalatest_$scalaMajor:$scalatestVersion"
+    testCompile "junit:junit:$junitVersion"
+}
+
+mainClassName = "com.github.ilittleangel.notifier.NotifierServer"
