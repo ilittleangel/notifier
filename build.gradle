@@ -3,6 +3,7 @@ version "$version"
 
 apply plugin: 'scala'
 apply plugin: 'application'
+apply from: 'gradle/testing.gradle'
 
 repositories {
     jcenter()
@@ -17,15 +18,18 @@ dependencies {
     compile "org.scala-lang:scala-library:$scalaMajor.$scalaMinor"
 
     compile "com.typesafe:config:$typesafeConfigVersion"
-    compile "com.typesafe.akka:akka-actor_$scalaMajor:$akkaVersion"
     compile "com.typesafe.akka:akka-http_$scalaMajor:$akkaHttpVersion"
     compile "com.typesafe.akka:akka-http-spray-json_$scalaMajor:$akkaHttpVersion"
-    compile "com.typesafe.akka:akka-stream_$scalaMajor:$akkaVersion"
+    compile "com.lightbend.akka:akka-stream-alpakka-ftp_$scalaMajor:$alpakkaVersion"
+    compile "com.github.scopt:scopt_$scalaMajor:$scoptVersion"
+
+    // uncomment for debug logging in the sftp client
+    //runtime "ch.qos.logback:logback-classic:1.2.3"
 
     testCompile "org.scalatest:scalatest_$scalaMajor:$scalatestVersion"
-    testCompile "com.stephenn:scalatest-circe_$scalaMajor:$scalatestCirceVersion"
-    testCompile "com.typesafe.akka:akka-testkit_$scalaMajor:$akkaVersion"
     testCompile "com.typesafe.akka:akka-http-testkit_$scalaMajor:$akkaHttpVersion"
+    testCompile "com.stephenn:scalatest-circe_$scalaMajor:$scalatestCirceVersion"
+    testCompile "com.github.stefanbirkner:fake-sftp-server-lambda:$fakeSftpServerVersion"
     testCompile "junit:junit:$junitVersion"
 }
 

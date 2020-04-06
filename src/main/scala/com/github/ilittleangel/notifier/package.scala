@@ -1,13 +1,15 @@
 package com.github.ilittleangel
 
-import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.time.{Instant, ZoneOffset}
+
+import com.github.ilittleangel.notifier.destinations.Destination
+import com.typesafe.config.Config
+
+import scala.util.Try
+
 
 package object notifier {
-
-  sealed trait Destination
-  case object Tivoli extends Destination
-  case object Slack extends Destination
-  case object Email extends Destination
 
   final case class Alert(destination: Destination, message: String, properties: Option[Map[String, String]], ts: Option[Instant])
   final case class ActionPerformed(alert: Alert, isPerformed: Boolean, status: String, description: String)
@@ -21,4 +23,13 @@ package object notifier {
     }
   }
 
+  val formatter: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC)
+
+  implicit class NotifierConfigOps(self: Config) {
+    def toOption(configPath: String): Option[String] = {
+      Try(Some(self.getString(configPath))).getOrElse(None)
+    }
+  }
+
 }
+

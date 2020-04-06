@@ -1,0 +1,6 @@
+// Testing configuration
+test {
+  afterTest { desc, result ->
+    logger.quiet "  - ${desc.className}.${desc.name} with result: ${result.resultType}"
+  }
+}

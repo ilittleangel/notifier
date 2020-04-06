@@ -7,9 +7,10 @@ import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
 import akka.util.Timeout
-import com.github.ilittleangel.notifier.destinations.SlackClient
-import com.github.ilittleangel.notifier.{ActionPerformed, Alert, Email, ErrorResponse, Slack, Tivoli}
+import com.github.ilittleangel.notifier.destinations.{Destination, Email, Slack, Ftp}
+import com.github.ilittleangel.notifier.{ActionPerformed, Alert, ErrorResponse}
 
+import scala.concurrent.Future
 import scala.concurrent.duration._
 
 
@@ -26,38 +27,29 @@ trait NotifierRoutes extends JsonSupport with Directives {
 
   var alerts = List.empty[ActionPerformed]
 
+  val basePath = "notifier/api/v1"
+  val alertsEndpoint = "alerts"
+
   lazy val notifierRoutes: Route =
-    pathPrefix("notifier" / "api" / "v1") {
-      pathPrefix("alert") {
+    pathPrefix(separateOnSlashes(basePath)) {
+      pathPrefix(alertsEndpoint) {
         pathEnd {
           extractMatchedPath { path =>
             post {
-              entity(as[Alert]) {
+              entity(as[Alert]) { alert =>
+                log.info("POST '{}' with {}", path, alert)
 
-                case alert @ Alert(Slack, message, Some(props), _) =>
-                  val future = SlackClient.send(props("webhook"), message)
-                  onSuccess(future) {
-                    case Right(status) =>
-                      log.info("POST '{}' with {}", path, alert)
-                      alerts = feedback(alert.checkTimestamp, isPerformed = true, status) :: alerts
-                      complete(OK, feedback(alert, isPerformed = true, status))
-                    case Left(error) =>
-                      log.error("POST '{}' with {}", path, alert)
-                      alerts = feedback(alert.checkTimestamp, isPerformed = false, error) :: alerts
-                      complete(BadRequest, feedback(alert, isPerformed = false, error))
-                  }
+                alert match {
+                  case Alert(Email, message, props, ts) =>
+                    complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason, "Email destination not implemented yet!"))
 
-                case Alert(Slack, _, None, _) =>
-                  complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
-                    "Slack alert with no properties found", Some("Include properties with webhook url")))
+                  case Alert(destination, message, Some(props), _) =>
+                    val future = destination.send(message, props)
+                    evalFutureResponse(future, alert)
 
-                case Alert(Tivoli, message, props, ts) =>
-                  complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason, "Tivoli notifications not implemented yet!"))
-
-                case Alert(Email, message, props, ts) =>
-                  complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason, "Email notifications not implemented yet!"))
-                // Todo: implement email alert
-
+                  case Alert(destination, _, None, _) =>
+                    missedPropertiesResponse(destination)
+                }
               }
             } ~
               get {
@@ -69,23 +61,49 @@ trait NotifierRoutes extends JsonSupport with Directives {
       }
     }
 
+  /**
+   * Inform with ActionPerformed in the HTTP response Json body
+   * and increase the mutable list of alerts.
+   *
+   * @param future with Alert information that will be performed or not.
+   * @param alert  the alert itself.
+   * @return a Route for response.
+   */
+  def evalFutureResponse(future: Future[Either[String, String]], alert: Alert): Route =
+    onSuccess(future) {
+      case Right(status) =>
+        val alertPerformed = ActionPerformed(alert.checkTimestamp, isPerformed = true, status, "alert received and performed!")
+        alerts = alertPerformed :: alerts
+        complete(OK, alertPerformed)
+
+      case Left(error) =>
+        val alertPerformed = ActionPerformed(alert.checkTimestamp, isPerformed = false, error, "alert received but not performed!")
+        alerts = alertPerformed :: alerts
+        complete(BadRequest, alertPerformed)
+    }
 
   /**
-   * Inform with ActionPerformed in the HTTP response Json body.
+   * Inform the missed properties field in the HTTP request Json body.
    *
-   * @param alert       received in the HTTP request.
-   * @param isPerformed the action triggered because of alert.
-   * @param status      of the action.
+   * @param destination to Slack, Ftp, Email..
+   * @return a Route to response.
    */
-  def feedback(alert: Alert, isPerformed: Boolean = false, status: String = ""): ActionPerformed = {
-    val desc = if (isPerformed) "alert received and performed!" else "alert received but not performed!"
-    alert match {
-      case Alert(_, _, _, Some(_)) =>
-        ActionPerformed(alert, isPerformed, status, desc)
+  def missedPropertiesResponse(destination: Destination): Route = {
+    log.error(s"$destination alert request with no properties")
+    destination match {
+      case Slack =>
+        complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
+          "Slack alert with no properties", Some("Include properties with 'webhook' url")))
 
-      case Alert(_, _, _, None) =>
-        ActionPerformed(alert, isPerformed, status, s"$desc None 'timestamp': Instant.now() will be use.")
+      case Ftp =>
+        complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
+          "Ftp alert with no properties", Some("Include properties with 'host' and 'path'")))
+
+      case Email =>
+        complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
+          "Email alert with no properties", Some("Include properties with 'server', 'port' and 'subject'")))
     }
   }
+
 
 }
