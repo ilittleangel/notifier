@@ -4,11 +4,11 @@ import java.time.Instant
 
 import akka.actor.ActorSystem
 import akka.event.{Logging, LoggingAdapter}
-import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
 import akka.util.Timeout
 import com.github.ilittleangel.notifier.destinations.SlackClient
-import com.github.ilittleangel.notifier.{ActionPerformed, Alert, Slack}
+import com.github.ilittleangel.notifier.{ActionPerformed, Alert, Email, ErrorResponse, Slack, Tivoli}
 
 import scala.concurrent.duration._
 
@@ -40,28 +40,29 @@ trait NotifierRoutes extends JsonSupport with Directives {
                     case Right(status) =>
                       log.info("POST '{}' with {}", path, alert)
                       alerts = feedback(alert.checkTimestamp, isPerformed = true, status) :: alerts
-                      complete(StatusCodes.OK, feedback(alert, isPerformed = true, status))
+                      complete(OK, feedback(alert, isPerformed = true, status))
                     case Left(error) =>
                       log.error("POST '{}' with {}", path, alert)
                       alerts = feedback(alert.checkTimestamp, isPerformed = false, error) :: alerts
-                      complete(StatusCodes.BadRequest, feedback(alert, isPerformed = false, error))
+                      complete(BadRequest, feedback(alert, isPerformed = false, error))
                   }
 
-                /*
-              case Alert(Tivoli, message, props, ts) =>
-              // Todo: implement Tivoli alert
+                case Alert(Slack, _, None, _) =>
+                  complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
+                    "Slack alert with no properties found", Some("Include properties with webhook url")))
 
-              case Alert(Slack, _, None, _) =>
-                // Todo: use handleExceptions or failWith when no properties
+                case Alert(Tivoli, message, props, ts) =>
+                  complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason, "Tivoli notifications not implemented yet!"))
 
-              case Alert(Email, message, props, ts) =>
+                case Alert(Email, message, props, ts) =>
+                  complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason, "Email notifications not implemented yet!"))
                 // Todo: implement email alert
-                */
+
               }
             } ~
               get {
                 log.info("GET '{}'", path)
-                complete(StatusCodes.OK, alerts)
+                complete(OK, alerts)
               }
           }
         } // todo: añadir un query string para el RESET
@@ -86,6 +87,5 @@ trait NotifierRoutes extends JsonSupport with Directives {
         ActionPerformed(alert, isPerformed, status, s"$desc None 'timestamp': Instant.now() will be use.")
     }
   }
-
 
 }
