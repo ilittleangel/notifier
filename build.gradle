@@ -3,6 +3,8 @@ version "$version"
 
 apply plugin: 'scala'
 apply plugin: 'application'
+apply plugin: 'com.palantir.docker'
+apply from: 'gradle/distribution.gradle'
 apply from: 'gradle/testing.gradle'
 
 repositories {
@@ -34,3 +36,29 @@ dependencies {
 }
 
 mainClassName = "com.github.ilittleangel.notifier.NotifierServer"
+
+buildscript {
+    repositories {
+        jcenter()
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.palantir.gradle.docker:gradle-docker:$palantirDockerVersion"
+    }
+}
+
+task copyDockerfile(type: Copy) {
+    from "$projectDir/Dockerfile"
+    into "$buildDir/dockerfile"
+    expand(version: project.version)
+}
+
+docker {
+    name "angelrojo/notifier"
+    dockerfile file("$copyDockerfile.outputs.files.asPath/Dockerfile")
+    tags 'latest', "$project.version"
+    files distZip.outputs
+}
+
+dockerPrepare.dependsOn copyDockerfile
+docker.dependsOn build as Task

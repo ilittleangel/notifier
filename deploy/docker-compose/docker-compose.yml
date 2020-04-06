@@ -1,0 +1,33 @@
+version: "3.2"
+services:
+
+  notifier:
+    container_name: notifier
+    image: angelrojo/notifier:latest
+    environment:
+      SFTP_PRIVATE_KEY: /home/notifier/.ssh/id_rsa
+    volumes:
+      - ../../conf:/opt/config
+      - ./ftp/sftpd/id_rsa:/home/notifier/.ssh/id_rsa:ro
+    ports:
+      - "8081:8080"
+    networks:
+      - notifier-net
+
+  sftp:
+    container_name: sftp-server
+    image: atmoz/sftp
+    volumes:
+      - ./ftp/data:/home/notifier/upload
+      - ./ftp/sftpd/id_rsa.pub:/home/notifier/.ssh/keys/id_rsa.pub:ro
+      - ./ftp/sftpd/ssh_host_ed25519_key:/tmp/ssh_host_ed25519_key
+      - ./ftp/sftpd/ssh_host_rsa_key:/tmp/ssh_host_rsa_key
+      - ./ftp/sftpd/init.sh:/etc/sftp.d/init.sh
+    ports:
+      - "2222:22"
+    command: notifier:password:2000:2000
+    networks:
+      - notifier-net
+
+networks:
+  notifier-net:

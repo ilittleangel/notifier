@@ -1,0 +1,23 @@
+// Do not generate a 'tar' file
+tasks.distTar.enabled = false
+
+// Construct 'zip' adding configuration and laucher script from the project folder
+distZip {
+  into (project.name + "-" + project.version) {
+    from '.'
+    include 'bin/notifier'
+
+    from rootProject.projectDir
+    include 'conf/notifier.conf'
+  }
+}
+
+// Do not distribute conflicting libraries and archives
+configurations {
+  all*.exclude module: "log4j"
+  all*.exclude module: "log4j-over-slf4j"
+  all*.exclude module: "slf4j-log4j12"
+  archives.artifacts.removeAll {
+    PublishArtifact publishArtifact -> publishArtifact.type == 'tar'
+  }
+}
