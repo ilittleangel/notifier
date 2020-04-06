@@ -4,8 +4,7 @@ import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import com.github.ilittleangel.notifier.server.NotifierActor.ActionPerformed
-import com.github.ilittleangel.notifier.{Alert, Alerts, Destination, Email, Slack, Tivoli}
+import com.github.ilittleangel.notifier.{ActionPerformed, Alert, Alerts, Destination, Email, Slack, Tivoli}
 import spray.json.{DefaultJsonProtocol, DeserializationException, JsString, JsValue, JsonFormat, RootJsonFormat}
 
 import scala.util.Try
@@ -51,7 +50,9 @@ trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
     }
   }
 
-  implicit val alertJsonBody: RootJsonFormat[Alert] = jsonFormat3(Alert)
+  // todo: create serde to check if attribute `properties: Map[String, String]` contains an entry 'webhook' when slack, etc
+
+  implicit val alertJsonBody: RootJsonFormat[Alert] = jsonFormat4(Alert)
   implicit val alertsJsonBody: RootJsonFormat[Alerts] = jsonFormat1(Alerts)
   implicit val actionPerformedJsonFormat: RootJsonFormat[ActionPerformed] = jsonFormat4(ActionPerformed)
 }

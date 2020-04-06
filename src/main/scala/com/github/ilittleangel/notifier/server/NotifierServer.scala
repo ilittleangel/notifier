@@ -1,6 +1,6 @@
 package com.github.ilittleangel.notifier.server
 
-import akka.actor.{ActorRef, ActorSystem, Terminated}
+import akka.actor.{ActorSystem, Terminated}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Route
 import akka.stream.ActorMaterializer
@@ -17,7 +17,6 @@ object NotifierServer extends NotifierRoutes {
   implicit val materializer: ActorMaterializer = ActorMaterializer()
   implicit val executionContext: ExecutionContext = system.dispatcher
 
-  val notifierActor: ActorRef = system.actorOf(NotifierActor.props, "NotifierActor")
   lazy val routes: Route = notifierRoutes
 
   def start(host: String, port: Int): Unit = {
