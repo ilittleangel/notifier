@@ -8,7 +8,8 @@ case class FtpConfig(user: String,
                      host: Option[String],
                      port: Option[String],
                      path: Option[String],
-                     protocol: Option[String])
+                     protocol: Option[String],
+                     withPrivateKey: Boolean)
 
 object FtpConfig {
 
@@ -16,10 +17,11 @@ object FtpConfig {
     FtpConfig(
       user = config.getString("ftp.username"),
       pass = config.getString("ftp.password"),
-      host = config.toOption("ftp.host"),
-      port = config.toOption("ftp.port"),
-      path = config.toOption("ftp.path"),
-      protocol = config.toOption("ftp.protocol")
+      host = config.getStringOption("ftp.host"),
+      port = config.getStringOption("ftp.port"),
+      path = config.getStringOption("ftp.path"),
+      protocol = config.getStringOption("ftp.protocol"),
+      withPrivateKey = config.getBooleanOption("ftp.with_private_key").getOrElse(false),
     )
   }
 

@@ -26,9 +26,11 @@ package object notifier {
   val formatter: DateTimeFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME.withZone(ZoneOffset.UTC)
 
   implicit class NotifierConfigOps(self: Config) {
-    def toOption(configPath: String): Option[String] = {
-      Try(Some(self.getString(configPath))).getOrElse(None)
-    }
+    def getStringOption(configPath: String): Option[String] =
+      Try(self.getString(configPath)).toOption
+
+    def getBooleanOption(configPath: String): Option[Boolean] =
+      Try(self.getBoolean(configPath)).toOption
   }
 
 }

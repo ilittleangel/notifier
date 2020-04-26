@@ -28,8 +28,13 @@ case object Ftp extends Destination with AlpakkaFtpClient {
       val port = Try(props("port")).getOrElse(ftpConfig.port.getOrElse("'port' property not found"))
       val path = Try(props("path")).getOrElse(ftpConfig.path.getOrElse("'path' property not found"))
       val prot = Try(props("protocol")).getOrElse(ftpConfig.protocol.getOrElse("'protocol' property not found"))
+      val withPrivateKey = Try(props("withPrivateKey").toBoolean).getOrElse(ftpConfig.withPrivateKey)
+      val privateKey = if (withPrivateKey) sys.env.get("SFTP_PRIVATE_KEY") else None
 
-      upload(s"$message\n", path, host, port.toInt, user, pass, prot).flatMap {
+      log.debug(s"Ftp destination with params: " +
+        s"user=$user, pass=$pass, host=$host, port=$port, path=$path, protocol=$prot, withPrivateKey=$withPrivateKey")
+
+      upload(s"$message\n", path, host, port.toInt, user, pass, prot, privateKey).flatMap {
         case IOResult(count, Success(value)) =>
           val msg = s"Ftp alert success [value=$value, count=$count]"
           log.info(msg)
