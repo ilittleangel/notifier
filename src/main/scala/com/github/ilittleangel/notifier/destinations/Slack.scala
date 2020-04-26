@@ -1,17 +1,22 @@
 package com.github.ilittleangel.notifier.destinations
 
-import akka.http.scaladsl.Http
+import java.net.InetSocketAddress
+
 import akka.http.scaladsl.client.RequestBuilding._
 import akka.http.scaladsl.model.MediaTypes
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.model.headers.Accept
+import akka.http.scaladsl.settings.{ClientConnectionSettings, ConnectionPoolSettings}
 import akka.http.scaladsl.unmarshalling.Unmarshal
+import akka.http.scaladsl.{ClientTransport, Http}
 import com.typesafe.config.Config
 
 import scala.concurrent.Future
 
 
 case object Slack extends Destination {
+
+  private val defaultSettings = ConnectionPoolSettings(system)
 
   override def configure(config: Config): Unit = {}
 
@@ -24,8 +29,16 @@ case object Slack extends Destination {
          |""".stripMargin
 
     try {
+      val customSettings = props.get("proxy") match {
+        case Some(proxy) =>
+          val Array(host, port) = proxy.split(":")
+          val httpsProxyTransport = ClientTransport.httpsProxy(InetSocketAddress.createUnresolved(host, port.toInt))
+          defaultSettings.withConnectionSettings(ClientConnectionSettings(system).withTransport(httpsProxyTransport))
+        case None => defaultSettings
+      }
+
       val httpRequest = Post(uri = props("webhook"), body).addHeader(Accept(MediaTypes.`application/json`))
-      Http().singleRequest(httpRequest).flatMap { response =>
+      Http().singleRequest(httpRequest, settings = customSettings).flatMap { response =>
         response.status match {
           case OK =>
             val msg = s"Slack webhook request success [status=${response.status}]"
