@@ -402,6 +402,18 @@ class NotifierRoutesTest extends WordSpec
       }
     }
 
+    s"DELETE '/$basePath/$alertsEndpoint' should reset in-memory alerts and return an empty list" in {
+      val request = Delete(uri = s"/$basePath/$alertsEndpoint")
+
+      request ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[String] should matchJson("[]")
+      }
+
+      alerts shouldBe List.empty
+    }
+
   }
 
 }

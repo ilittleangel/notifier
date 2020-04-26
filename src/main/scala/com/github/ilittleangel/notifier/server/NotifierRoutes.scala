@@ -59,6 +59,11 @@ trait NotifierRoutes extends JsonSupport with Directives {
               get {
                 log.info("GET '{}'", path)
                 complete(OK, alerts)
+              } ~
+              delete {
+                log.info("DELETE '{}'", path)
+                alerts = Nil
+                complete(OK, alerts)
               }
             }
           }
