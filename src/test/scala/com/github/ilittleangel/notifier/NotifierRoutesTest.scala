@@ -1,11 +1,13 @@
 package com.github.ilittleangel.notifier
 
+import java.net.InetAddress
 import java.nio.charset.Charset
 import java.time.Instant
 
 import akka.actor.ActorSystem
 import akka.http.scaladsl.model.StatusCodes._
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
+import akka.http.scaladsl.model.headers.`Remote-Address`
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, RemoteAddress}
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import com.github.ilittleangel.notifier.destinations.Ftp
 import com.github.ilittleangel.notifier.server.NotifierRoutes
@@ -371,6 +373,32 @@ class NotifierRoutesTest extends WordSpec
             |   }
             |]
             |""".stripMargin)
+      }
+    }
+
+    s"POST '/$basePath/$alertsEndpoint' can be catch the remote client IP" in {
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "slack",
+           |   "message": "whatever"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
+        .withHeaders(`Remote-Address`(RemoteAddress(InetAddress.getByName("localhost"))))
+
+      request ~> routes ~> check {
+        status shouldBe BadRequest
+        responseAs[String] should matchJson(
+          s"""
+             |{
+             |   "status": ${BadRequest.intValue},
+             |   "statusText": "${BadRequest.reason}",
+             |   "reason": "Slack alert with no properties",
+             |   "possibleSolution": "Include properties with 'webhook' url",
+             |   "clientIp": "localhost - 127.0.0.1"
+             |}
+             |""".stripMargin)
       }
     }
 

@@ -4,7 +4,7 @@ import java.time.Instant
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import com.github.ilittleangel.notifier._
-import com.github.ilittleangel.notifier.destinations.{Destination, Email, Slack, Ftp}
+import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
 import spray.json.{DefaultJsonProtocol, DeserializationException, JsString, JsValue, JsonFormat, RootJsonFormat}
 
 import scala.util.Try
@@ -50,6 +50,6 @@ trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
 
   implicit val alertJsonBody: RootJsonFormat[Alert] = jsonFormat4(Alert)
   implicit val alertsJsonBody: RootJsonFormat[Alerts] = jsonFormat1(Alerts)
-  implicit val actionPerformedJsonFormat: RootJsonFormat[ActionPerformed] = jsonFormat4(ActionPerformed)
-  implicit val errorResponseJsonFormat: RootJsonFormat[ErrorResponse] = jsonFormat4(ErrorResponse)
+  implicit val actionPerformedJsonFormat: RootJsonFormat[ActionPerformed] = jsonFormat5(ActionPerformed)
+  implicit val errorResponseJsonFormat: RootJsonFormat[ErrorResponse] = jsonFormat5(ErrorResponse)
 }

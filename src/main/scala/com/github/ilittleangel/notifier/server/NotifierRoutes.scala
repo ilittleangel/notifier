@@ -1,5 +1,6 @@
 package com.github.ilittleangel.notifier.server
 
+import java.net.InetAddress
 import java.time.Instant
 
 import akka.actor.ActorSystem
@@ -7,8 +8,8 @@ import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
 import akka.util.Timeout
-import com.github.ilittleangel.notifier.destinations.{Destination, Email, Slack, Ftp}
-import com.github.ilittleangel.notifier.{ActionPerformed, Alert, ErrorResponse}
+import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
+import com.github.ilittleangel.notifier.{ActionPerformed, Alert, ErrorResponse, _}
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -21,9 +22,9 @@ trait NotifierRoutes extends JsonSupport with Directives {
 
   lazy val log: LoggingAdapter = Logging(system, classOf[NotifierRoutes])
 
-  implicit lazy val timeout: Timeout = Timeout(5.seconds)
+  implicit lazy val timeout: Timeout = Timeout(10.seconds)
 
-  implicit def defaultTs: Instant = Instant.now()
+  def defaultTs: Instant = Instant.now()
 
   var alerts = List.empty[ActionPerformed]
 
@@ -32,32 +33,36 @@ trait NotifierRoutes extends JsonSupport with Directives {
 
   lazy val notifierRoutes: Route =
     pathPrefix(separateOnSlashes(basePath)) {
-      pathPrefix(alertsEndpoint) {
-        pathEnd {
-          extractMatchedPath { path =>
-            post {
-              entity(as[Alert]) { alert =>
-                log.info("POST '{}' with {}", path, alert)
+      extractClientIP { ip =>
+        pathPrefix(alertsEndpoint) {
+          pathEnd {
+            extractMatchedPath { path =>
+              post {
+                entity(as[Alert]) { alert =>
+                  log.info("POST '{}' with {}", path, alert)
 
-                alert match {
-                  case Alert(Email, message, props, ts) =>
-                    complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason, "Email destination not implemented yet!"))
+                  alert match {
+                    case Alert(Email, _, _, _) =>
+                      complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
+                        "Email destination not implemented yet!", clientIp = showOriginIpInfo(ip.toOption)))
 
-                  case Alert(destination, message, Some(props), _) =>
-                    val future = destination.send(message, props)
-                    evalFutureResponse(future, alert)
+                    case Alert(destination, message, Some(props), _) =>
+                      val future = destination.send(message, props)
+                      evalFutureResponse(future, alert, ip.toOption)
 
-                  case Alert(destination, _, None, _) =>
-                    missedPropertiesResponse(destination)
+                    case Alert(destination, _, None, _) =>
+                      missedPropertiesResponse(destination, ip.toOption)
+                  }
+
                 }
-              }
-            } ~
+              } ~
               get {
                 log.info("GET '{}'", path)
                 complete(OK, alerts)
               }
+            }
           }
-        } // todo: añadir un query string para el RESET
+        }
       }
     }
 
@@ -69,41 +74,71 @@ trait NotifierRoutes extends JsonSupport with Directives {
    * @param alert  the alert itself.
    * @return a Route for response.
    */
-  def evalFutureResponse(future: Future[Either[String, String]], alert: Alert): Route =
+  def evalFutureResponse(future: Future[Either[String, String]], alert: Alert, ip: Option[InetAddress]): Route = {
+    val response = ActionPerformed(alert.ensureTimestamp(defaultTs), isPerformed = false, "", "", showOriginIpInfo(ip))
+
     onSuccess(future) {
       case Right(status) =>
-        val alertPerformed = ActionPerformed(alert.checkTimestamp, isPerformed = true, status, "alert received and performed!")
+        val alertPerformed = response.copy(isPerformed = true, status = status, description = "alert received and performed!")
         alerts = alertPerformed :: alerts
         complete(OK, alertPerformed)
 
       case Left(error) =>
-        val alertPerformed = ActionPerformed(alert.checkTimestamp, isPerformed = false, error, "alert received but not performed!")
+        val alertPerformed = response.copy(isPerformed = false, status = error, description = "alert received but not performed!")
         alerts = alertPerformed :: alerts
         complete(BadRequest, alertPerformed)
     }
+  }
 
   /**
    * Inform the missed properties field in the HTTP request Json body.
    *
    * @param destination to Slack, Ftp, Email..
+   * @param ip from remote client.
    * @return a Route to response.
    */
-  def missedPropertiesResponse(destination: Destination): Route = {
+  def missedPropertiesResponse(destination: Destination, ip: Option[InetAddress]): Route = {
     log.error(s"$destination alert request with no properties")
+    val response = ErrorResponse(BadRequest.intValue, BadRequest.reason, "", None, showOriginIpInfo(ip))
+
     destination match {
       case Slack =>
-        complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
-          "Slack alert with no properties", Some("Include properties with 'webhook' url")))
+        complete(BadRequest, response.copy(
+          reason = "Slack alert with no properties",
+          possibleSolution = Some("Include properties with 'webhook' url"))
+        )
 
       case Ftp =>
-        complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
-          "Ftp alert with no properties", Some("Include properties with 'host' and 'path'")))
+        complete(BadRequest, response.copy(
+          reason = "Ftp alert with no properties",
+          possibleSolution = Some("Include properties with 'host' and 'path'"))
+        )
 
       case Email =>
-        complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
-          "Email alert with no properties", Some("Include properties with 'server', 'port' and 'subject'")))
+        complete(BadRequest, response.copy(
+          reason = "Email alert with no properties",
+          possibleSolution = Some("Include properties with 'server', 'port' and 'subject'"))
+        )
     }
   }
 
+
+  /**
+   * Show the client's IP if the specific config attribute `show_origin_ip` is true.
+   *
+   * @param ip extracted from either the X-Forwarded-For, Remote-Address or X-Real-IP HTTP header.
+   * @return a RemoteClientIp object if the properly config attribute is true.
+   */
+  def showOriginIpInfo(ip: Option[InetAddress]): Option[String] = {
+    val hostname = applyOrElse(ip)(_.getHostName, "unknown")
+    val hostAddress = applyOrElse(ip)(_.getHostAddress, "unknown")
+    val ipInfo = s"$hostname - $hostAddress"
+    log.debug(s"HTTP request performed from: $ipInfo")
+
+    ip match {
+      case Some(_) => Some(ipInfo)
+      case None => None
+    }
+  }
 
 }
