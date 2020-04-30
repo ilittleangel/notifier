@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notifier
+  namespace: default
+  labels:
+    k8s-app: notifier
+    version: 0.1.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: notifier
+  template:
+    metadata:
+      labels:
+        k8s-app: notifier
+        version: 0.1.0
+    spec:
+      containers:
+        - image: localhost:5000/notifier:0.1.0
+          name: notifier
+          imagePullPolicy: Always
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 100m
+          volumeMounts:
+            - name: config
+              mountPath: /opt/notifier/conf
+          env:
+            - name: FTP_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: notifier
+                  key: ftpPass
+            - name: SFTP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: notifier
+                  key: ftpPrivateKey
+      restartPolicy: Always
+      volumes:
+        - name: config
+          configMap:
+            name: notifier
+            items:
+              - key: notifier.conf
+                path: notifier.conf
