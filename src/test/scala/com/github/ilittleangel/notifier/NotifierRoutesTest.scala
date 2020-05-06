@@ -11,6 +11,7 @@ import akka.http.scaladsl.model.{ContentTypes, HttpEntity, RemoteAddress}
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import com.github.ilittleangel.notifier.destinations.Ftp
 import com.github.ilittleangel.notifier.server.NotifierRoutes
+import com.github.ilittleangel.notifier.utils.Eithers.separator
 import com.github.stefanbirkner.fakesftpserver.lambda.FakeSftpServer.withSftpServer
 import com.stephenn.scalatest.circe.JsonMatchers
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
@@ -61,7 +62,7 @@ class NotifierRoutesTest extends WordSpec
       val requestBody =
         s"""
            |{
-           |   "destination": "slack",
+           |   "destination": ["slack"],
            |   "message": "alarm process"
            |}
            |""".stripMargin
@@ -146,7 +147,7 @@ class NotifierRoutesTest extends WordSpec
             s"""
                |{
                |   "alert": {
-               |      "destination": "ftp",
+               |      "destination": ["ftp"],
                |      "message": "alarm process 1",
                |      "properties": {
                |          "host": "localhost",
@@ -158,7 +159,7 @@ class NotifierRoutesTest extends WordSpec
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]",
-               |   "description": "alert received and performed!"
+               |   "description": "$AlertPerformed"
                |}
                |""".stripMargin)
         }
@@ -166,9 +167,9 @@ class NotifierRoutesTest extends WordSpec
         // checking alerts memory storage
         alerts should have size 1
         alerts.head.isPerformed shouldBe true
-        alerts.head.description shouldBe "alert received and performed!"
+        alerts.head.description shouldBe AlertPerformed
         alerts.head.status shouldBe "Ftp alert success [value=Done, count=16]"
-        alerts.head.alert.destination shouldBe Ftp
+        alerts.head.alert.destination shouldBe List(Ftp)
         alerts.head.alert.ts shouldBe Some(ts)
         alerts.head.alert.message shouldBe "alarm process 1"
 
@@ -213,7 +214,7 @@ class NotifierRoutesTest extends WordSpec
             s"""
                |{
                |   "alert": {
-               |      "destination": "ftp",
+               |      "destination": ["ftp"],
                |      "message": "alarm process 2",
                |      "properties": {
                |          "host": "localhost",
@@ -225,7 +226,7 @@ class NotifierRoutesTest extends WordSpec
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]",
-               |   "description": "alert received and performed!"
+               |   "description": "$AlertPerformed"
                |}
                |""".stripMargin)
         }
@@ -233,9 +234,9 @@ class NotifierRoutesTest extends WordSpec
         // checking alerts memory storage
         alerts should have size 2
         alerts.head.isPerformed shouldBe true
-        alerts.head.description shouldBe "alert received and performed!"
+        alerts.head.description shouldBe AlertPerformed
         alerts.head.status shouldBe "Ftp alert success [value=Done, count=16]"
-        alerts.head.alert.destination shouldBe Ftp
+        alerts.head.alert.destination shouldBe List(Ftp)
         alerts.head.alert.message shouldBe "alarm process 2"
 
         // checking sftp destination
@@ -280,7 +281,7 @@ class NotifierRoutesTest extends WordSpec
             s"""
                |{
                |   "alert": {
-               |      "destination": "ftp",
+               |      "destination": ["ftp"],
                |      "message": "alarm process 3",
                |      "properties": {
                |          "host": "localhost",
@@ -292,7 +293,7 @@ class NotifierRoutesTest extends WordSpec
                |   },
                |   "isPerformed": false,
                |   "status": "Ftp alert failed with an Exception [error=unsupported protocol]",
-               |   "description": "alert received but not performed!"
+               |   "description": "$AlertNotPerformed"
                |}
                |""".stripMargin)
         }
@@ -300,9 +301,9 @@ class NotifierRoutesTest extends WordSpec
         // checking alerts memory storage
         alerts should have size 3
         alerts.head.isPerformed shouldBe false
-        alerts.head.description shouldBe "alert received but not performed!"
+        alerts.head.description shouldBe AlertNotPerformed
         alerts.head.status shouldBe "Ftp alert failed with an Exception [error=unsupported protocol]"
-        alerts.head.alert.destination shouldBe Ftp
+        alerts.head.alert.destination shouldBe List(Ftp)
         alerts.head.alert.message shouldBe "alarm process 3"
 
         // checking sftp destination
@@ -325,7 +326,7 @@ class NotifierRoutesTest extends WordSpec
             |[
             |   {
             |      "alert": {
-            |         "destination": "ftp",
+            |         "destination": ["ftp"],
             |         "message": "alarm process 3",
             |         "properties": {
             |             "host": "localhost",
@@ -337,11 +338,11 @@ class NotifierRoutesTest extends WordSpec
             |      },
             |      "isPerformed": false,
             |      "status": "Ftp alert failed with an Exception [error=unsupported protocol]",
-            |      "description": "alert received but not performed!"
+            |      "description": "$AlertNotPerformed"
             |   },
             |   {
             |      "alert": {
-            |         "destination": "ftp",
+            |         "destination": ["ftp"],
             |         "message": "alarm process 2",
             |         "properties": {
             |             "host": "localhost",
@@ -353,11 +354,11 @@ class NotifierRoutesTest extends WordSpec
             |      },
             |      "isPerformed": true,
             |      "status": "Ftp alert success [value=Done, count=16]",
-            |      "description": "alert received and performed!"
+            |      "description": "$AlertPerformed"
             |   },
             |   {
             |      "alert": {
-            |         "destination": "ftp",
+            |         "destination": ["ftp"],
             |         "message": "alarm process 1",
             |         "properties": {
             |             "host": "localhost",
@@ -369,7 +370,7 @@ class NotifierRoutesTest extends WordSpec
             |      },
             |      "isPerformed": true,
             |      "status": "Ftp alert success [value=Done, count=16]",
-            |      "description": "alert received and performed!"
+            |      "description": "$AlertPerformed"
             |   }
             |]
             |""".stripMargin)
@@ -412,6 +413,133 @@ class NotifierRoutesTest extends WordSpec
       }
 
       alerts shouldBe List.empty
+    }
+
+    s"POST '/$basePath/$alertsEndpoint' be able to accept multi destination alerts" in {
+      val alarmMessage = "alarm process 4"
+      withSftpServer { server =>
+
+        server.addUser(username, password)
+        server.setPort(port)
+        server.putFile(s"$homeDirectory/data.txt", "something before", Charset.forName("UTF-8"))
+
+        val requestBody =
+          s"""
+             |{
+             |   "destination": ["ftp", "ftp"],
+             |   "message": "$alarmMessage",
+             |   "properties": {
+             |          "host": "localhost",
+             |          "port": "$port",
+             |          "protocol": "sftp",
+             |          "path": "$homeDirectory/data.txt"
+             |   },
+             |   "ts": "$tsWithFormat"
+             |}
+             |""".stripMargin
+
+        val httpEntity = HttpEntity(ContentTypes.`application/json`, requestBody)
+        val request = Post(uri = s"/$basePath/$alertsEndpoint", httpEntity)
+
+        // checking HTTP response
+        request ~> routes ~> check {
+          status shouldBe OK
+          contentType shouldBe ContentTypes.`application/json`
+          responseAs[String] should matchJson(
+            s"""
+               |{
+               |   "alert": {
+               |      "destination": [
+               |          "ftp",
+               |          "ftp"
+               |      ],
+               |      "message": "$alarmMessage",
+               |      "properties": {
+               |          "host": "localhost",
+               |          "port": "$port",
+               |          "protocol": "sftp",
+               |          "path": "$homeDirectory/data.txt"
+               |      },
+               |      "ts": "$tsWithFormat"
+               |   },
+               |   "isPerformed": true,
+               |   "status": "Ftp alert success [value=Done, count=16]; Ftp alert success [value=Done, count=16]",
+               |   "description": "$AlertPerformed"
+               |}
+               |""".stripMargin)
+        }
+
+        // checking alerts in-memory
+        alerts should have size 1
+        alerts.head.isPerformed shouldBe true
+        alerts.head.description shouldBe AlertPerformed
+        alerts.head.status.split(separator).length shouldBe 2
+        alerts.head.status shouldBe "Ftp alert success [value=Done, count=16]; Ftp alert success [value=Done, count=16]"
+        alerts.head.alert.destination shouldBe List(Ftp, Ftp)
+        alerts.head.alert.message shouldBe alarmMessage
+
+        // checking sftp destination
+        val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
+        fileContent.sliding(alarmMessage.length).count(_ == alarmMessage) shouldBe 2
+        server.deleteAllFilesAndDirectories()
+      }
+    }
+
+    s"POST '/$basePath/$alertsEndpoint' return a Not Performed alert if one or more multi destinations fail" in {
+      val requestBody =
+        s"""
+           |{
+           |   "destination": ["ftp", "ftp"],
+           |   "message": "alarm process 5",
+           |   "properties": {
+           |      "host": "localhost",
+           |      "port": "$port",
+           |      "protocol": "bad-protocol",
+           |      "path": "$homeDirectory/data.txt"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+
+      val httpEntity = HttpEntity(ContentTypes.`application/json`, requestBody)
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", httpEntity)
+      val failedStatus = "Ftp alert failed with an Exception [error=unsupported protocol]"
+
+      // checking HTTP response
+      request ~> routes ~> check {
+        status shouldBe BadRequest
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[String] should matchJson(
+          s"""
+             |{
+             |   "alert": {
+             |      "destination": [
+             |          "ftp",
+             |          "ftp"
+             |      ],
+             |      "message": "alarm process 5",
+             |      "properties": {
+             |          "host": "localhost",
+             |          "port": "$port",
+             |          "protocol": "bad-protocol",
+             |          "path": "$homeDirectory/data.txt"
+             |      },
+             |      "ts": "$tsWithFormat"
+             |   },
+             |   "isPerformed": false,
+             |   "status": "$failedStatus$separator$failedStatus",
+             |   "description": "$AlertNotPerformed"
+             |}
+             |""".stripMargin)
+      }
+
+      // checking alerts in-memory
+      alerts should have size 2
+      alerts.head.isPerformed shouldBe false
+      alerts.head.description shouldBe AlertNotPerformed
+      alerts.head.status shouldBe failedStatus + separator + failedStatus
+      alerts.head.alert.destination shouldBe List(Ftp, Ftp)
+      alerts.head.alert.message shouldBe "alarm process 5"
     }
 
   }

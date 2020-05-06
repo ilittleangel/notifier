@@ -11,7 +11,7 @@ import scala.util.Try
 
 package object notifier {
 
-  final case class Alert(destination: Destination, message: String, properties: Option[Map[String, String]], ts: Option[Instant])
+  final case class Alert(destination: List[Destination], message: String, properties: Option[Map[String, String]], ts: Option[Instant])
   final case class ActionPerformed(alert: Alert, isPerformed: Boolean, status: String, description: String, clientIp: Option[String])
   final case class Alerts(alerts: List[ActionPerformed])
   final case class ErrorResponse(status: Int, statusText: String, reason: String, possibleSolution: Option[String] = None, clientIp: Option[String])
@@ -34,5 +34,14 @@ package object notifier {
   }
 
   def applyOrElse[A, B](optValue: Option[A])(f: A => B, default: B): B = optValue.map(f(_)).getOrElse(default)
+
+  /**
+   * Global constants
+   */
+  val DeserializationError = "Expected (Ftp, Slack or Email) for 'destination' attribute"
+  val AlertPerformed = "alert received and performed!"
+  val AlertNotPerformed = "alert received but not performed!"
+
+
 }
 
