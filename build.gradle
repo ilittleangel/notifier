@@ -35,7 +35,7 @@ dependencies {
     testCompile "junit:junit:$junitVersion"
 }
 
-mainClassName = "com.github.ilittleangel.notifier.NotifierServer"
+mainClassName = "${group}.App"
 
 buildscript {
     repositories {
