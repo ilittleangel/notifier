@@ -61,4 +61,4 @@ docker {
 }
 
 dockerPrepare.dependsOn copyDockerfile
-docker.dependsOn build as Task
+docker.dependsOn assembleDist as Task
