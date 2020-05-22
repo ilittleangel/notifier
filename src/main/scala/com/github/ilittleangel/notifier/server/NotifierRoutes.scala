@@ -7,13 +7,11 @@ import akka.actor.ActorSystem
 import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
-import akka.util.Timeout
 import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
 import com.github.ilittleangel.notifier.utils.Eithers.FuturesEitherOps
 import com.github.ilittleangel.notifier.{ActionPerformed, Alert, ErrorResponse, _}
 
 import scala.concurrent.Future
-import scala.concurrent.duration._
 
 
 trait NotifierRoutes extends JsonSupport with Directives {
@@ -22,8 +20,6 @@ trait NotifierRoutes extends JsonSupport with Directives {
   implicit def system: ActorSystem
 
   lazy val log: LoggingAdapter = Logging(system, classOf[NotifierRoutes])
-
-  implicit lazy val timeout: Timeout = Timeout(10.seconds)
 
   def defaultTs: Instant = Instant.now()
 

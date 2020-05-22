@@ -4,11 +4,11 @@ import java.net.InetAddress
 import java.nio.charset.Charset
 import java.time.Instant
 
-import akka.actor.ActorSystem
 import akka.http.scaladsl.model.StatusCodes._
 import akka.http.scaladsl.model.headers.`Remote-Address`
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, RemoteAddress}
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
+import akka.util.Timeout
 import com.github.ilittleangel.notifier.destinations.Ftp
 import com.github.ilittleangel.notifier.server.NotifierRoutes
 import com.github.ilittleangel.notifier.utils.Eithers.separator
@@ -42,7 +42,7 @@ class NotifierRoutesTest extends WordSpec
     Ftp.configure(config)
   }
 
-  private implicit def defaultTimeout(implicit system: ActorSystem): RouteTestTimeout = RouteTestTimeout(5.seconds)
+  private implicit val testTimeout: RouteTestTimeout = RouteTestTimeout(Timeout(10.seconds).duration)
 
   "NotifierRoutes" should {
 
