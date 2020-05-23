@@ -57,7 +57,7 @@ class NotifierRoutesTest extends AnyWordSpec
         responseAs[String] should matchJson("[]")
       }
 
-      alerts shouldBe List.empty
+      alerts should have size 0
     }
 
     s"POST '/$basePath/$alertsEndpoint' be able to reject Slack alerts with no properties" in {
@@ -85,7 +85,7 @@ class NotifierRoutesTest extends AnyWordSpec
             |""".stripMargin)
       }
 
-      alerts shouldBe List.empty
+      alerts should have size 0
     }
 
     s"POST '/$basePath/$alertsEndpoint' be able to reject ftp alerts with no properties" in {
@@ -113,7 +113,7 @@ class NotifierRoutesTest extends AnyWordSpec
             |""".stripMargin)
       }
 
-      alerts shouldBe List.empty
+      alerts should have size 0
     }
 
     s"POST '/$basePath/$alertsEndpoint' be able to accept successful alerts" in {
@@ -168,12 +168,12 @@ class NotifierRoutesTest extends AnyWordSpec
 
         // checking alerts memory storage
         alerts should have size 1
-        alerts.head.isPerformed shouldBe true
-        alerts.head.description shouldBe AlertPerformed
-        alerts.head.status shouldBe "Ftp alert success [value=Done, count=16]"
-        alerts.head.alert.destination shouldBe List(Ftp)
-        alerts.head.alert.ts shouldBe Some(ts)
-        alerts.head.alert.message shouldBe "alarm process 1"
+        alerts.last.isPerformed shouldBe true
+        alerts.last.description shouldBe AlertPerformed
+        alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]"
+        alerts.last.alert.destination shouldBe List(Ftp)
+        alerts.last.alert.ts shouldBe Some(ts)
+        alerts.last.alert.message shouldBe "alarm process 1"
 
         // checking sftp destination
         val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
@@ -224,7 +224,7 @@ class NotifierRoutesTest extends AnyWordSpec
                |          "protocol": "sftp",
                |          "path": "$homeDirectory/data.txt"
                |      },
-               |      "ts": "${formatter.format(alerts.head.alert.ts.get)}"
+               |      "ts": "${formatter.format(alerts.last.alert.ts.get)}"
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]",
@@ -235,11 +235,11 @@ class NotifierRoutesTest extends AnyWordSpec
 
         // checking alerts memory storage
         alerts should have size 2
-        alerts.head.isPerformed shouldBe true
-        alerts.head.description shouldBe AlertPerformed
-        alerts.head.status shouldBe "Ftp alert success [value=Done, count=16]"
-        alerts.head.alert.destination shouldBe List(Ftp)
-        alerts.head.alert.message shouldBe "alarm process 2"
+        alerts.last.isPerformed shouldBe true
+        alerts.last.description shouldBe AlertPerformed
+        alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]"
+        alerts.last.alert.destination shouldBe List(Ftp)
+        alerts.last.alert.message shouldBe "alarm process 2"
 
         // checking sftp destination
         val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
@@ -302,11 +302,11 @@ class NotifierRoutesTest extends AnyWordSpec
 
         // checking alerts memory storage
         alerts should have size 3
-        alerts.head.isPerformed shouldBe false
-        alerts.head.description shouldBe AlertNotPerformed
-        alerts.head.status shouldBe "Ftp alert failed with an Exception [error=unsupported protocol]"
-        alerts.head.alert.destination shouldBe List(Ftp)
-        alerts.head.alert.message shouldBe "alarm process 3"
+        alerts.last.isPerformed shouldBe false
+        alerts.last.description shouldBe AlertNotPerformed
+        alerts.last.status shouldBe "Ftp alert failed with an Exception [error=unsupported protocol]"
+        alerts.last.alert.destination shouldBe List(Ftp)
+        alerts.last.alert.message shouldBe "alarm process 3"
 
         // checking sftp destination
         val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
@@ -414,7 +414,7 @@ class NotifierRoutesTest extends AnyWordSpec
         responseAs[String] should matchJson("[]")
       }
 
-      alerts shouldBe List.empty
+      alerts should have size 0
     }
 
     s"POST '/$basePath/$alertsEndpoint' be able to accept multi destination alerts" in {
@@ -473,12 +473,12 @@ class NotifierRoutesTest extends AnyWordSpec
 
         // checking alerts in-memory
         alerts should have size 1
-        alerts.head.isPerformed shouldBe true
-        alerts.head.description shouldBe AlertPerformed
-        alerts.head.status.split(separator).length shouldBe 2
-        alerts.head.status shouldBe "Ftp alert success [value=Done, count=16]; Ftp alert success [value=Done, count=16]"
-        alerts.head.alert.destination shouldBe List(Ftp, Ftp)
-        alerts.head.alert.message shouldBe alarmMessage
+        alerts.last.isPerformed shouldBe true
+        alerts.last.description shouldBe AlertPerformed
+        alerts.last.status.split(separator).length shouldBe 2
+        alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]; Ftp alert success [value=Done, count=16]"
+        alerts.last.alert.destination shouldBe List(Ftp, Ftp)
+        alerts.last.alert.message shouldBe alarmMessage
 
         // checking sftp destination
         val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
@@ -537,11 +537,11 @@ class NotifierRoutesTest extends AnyWordSpec
 
       // checking alerts in-memory
       alerts should have size 2
-      alerts.head.isPerformed shouldBe false
-      alerts.head.description shouldBe AlertNotPerformed
-      alerts.head.status shouldBe failedStatus + separator + failedStatus
-      alerts.head.alert.destination shouldBe List(Ftp, Ftp)
-      alerts.head.alert.message shouldBe "alarm process 5"
+      alerts.last.isPerformed shouldBe false
+      alerts.last.description shouldBe AlertNotPerformed
+      alerts.last.status shouldBe failedStatus + separator + failedStatus
+      alerts.last.alert.destination shouldBe List(Ftp, Ftp)
+      alerts.last.alert.message shouldBe "alarm process 5"
     }
 
   }

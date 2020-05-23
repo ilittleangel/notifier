@@ -9,6 +9,7 @@ import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
 import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
 import com.github.ilittleangel.notifier.utils.Eithers.FuturesEitherOps
+import com.github.ilittleangel.notifier.utils.FixedList
 import com.github.ilittleangel.notifier.{ActionPerformed, Alert, ErrorResponse, _}
 
 import scala.concurrent.Future
@@ -23,7 +24,7 @@ trait NotifierRoutes extends JsonSupport with Directives {
 
   def defaultTs: Instant = Instant.now()
 
-  var alerts = List.empty[ActionPerformed]
+  var alerts: FixedList[ActionPerformed] = new FixedList[ActionPerformed](capacity = 100).empty
 
   val basePath = "notifier/api/v1"
   val alertsEndpoint = "alerts"
@@ -55,12 +56,12 @@ trait NotifierRoutes extends JsonSupport with Directives {
               } ~
               get {
                 log.info("GET '{}'", path)
-                complete(OK, alerts)
+                complete(OK, alerts.toList.reverse)
               } ~
               delete {
                 log.info("DELETE '{}'", path)
-                alerts = Nil
-                complete(OK, alerts)
+                alerts = alerts.empty
+                complete(OK, alerts.toList)
               }
             }
           }
@@ -82,12 +83,12 @@ trait NotifierRoutes extends JsonSupport with Directives {
     onSuccess(future) {
       case Right(status) =>
         val alertPerformed = response.copy(isPerformed = true, status = status, description = AlertPerformed)
-        alerts = alertPerformed :: alerts
+        alerts = alerts :+ alertPerformed
         complete(OK, alertPerformed)
 
       case Left(error) =>
         val alertPerformed = response.copy(isPerformed = false, status = error, description = AlertNotPerformed)
-        alerts = alertPerformed :: alerts
+        alerts = alerts :+ alertPerformed
         complete(BadRequest, alertPerformed)
     }
   }
