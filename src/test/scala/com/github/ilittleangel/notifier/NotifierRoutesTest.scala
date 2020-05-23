@@ -16,14 +16,16 @@ import com.github.stefanbirkner.fakesftpserver.lambda.FakeSftpServer.withSftpSer
 import com.stephenn.scalatest.circe.JsonMatchers
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import org.junit.runner.RunWith
-import org.scalatest.junit.JUnitRunner
-import org.scalatest.{BeforeAndAfterAll, Matchers, WordSpec}
+import org.scalatest.BeforeAndAfterAll
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpec
+import org.scalatestplus.junit.JUnitRunner
 
 import scala.concurrent.duration.DurationInt
 
 
 @RunWith(classOf[JUnitRunner])
-class NotifierRoutesTest extends WordSpec
+class NotifierRoutesTest extends AnyWordSpec
   with Matchers with ScalatestRouteTest with JsonMatchers with NotifierRoutes with BeforeAndAfterAll {
 
   private val routes = notifierRoutes
@@ -480,7 +482,7 @@ class NotifierRoutesTest extends WordSpec
 
         // checking sftp destination
         val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
-        fileContent.sliding(alarmMessage.length).count(_ == alarmMessage) shouldBe 2
+        fileContent.toSeq.sliding(alarmMessage.length).map(_.unwrap).count(_ == alarmMessage) shouldBe 2
         server.deleteAllFilesAndDirectories()
       }
     }
