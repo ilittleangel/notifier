@@ -9,7 +9,7 @@ import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
 import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
 import com.github.ilittleangel.notifier.utils.Eithers.FuturesEitherOps
-import com.github.ilittleangel.notifier.utils.FixedList
+import com.github.ilittleangel.notifier.utils.{FixedList, FixedListFactory}
 import com.github.ilittleangel.notifier.{ActionPerformed, Alert, ErrorResponse, _}
 
 import scala.concurrent.Future
@@ -28,6 +28,7 @@ trait NotifierRoutes extends JsonSupport with Directives {
 
   val basePath = "notifier/api/v1"
   val alertsEndpoint = "alerts"
+  val adminEndpoint = "admin"
 
   lazy val notifierRoutes: Route =
     pathPrefix(separateOnSlashes(basePath)) {
@@ -62,6 +63,23 @@ trait NotifierRoutes extends JsonSupport with Directives {
                 log.info("DELETE '{}'", path)
                 alerts = alerts.empty
                 complete(OK, alerts.toList)
+              }
+            }
+          }
+        } ~
+        pathPrefix(adminEndpoint) {
+          path("set-alerts-capacity") {
+            extractMatchedPath { path =>
+              post {
+                parameter("capacity".as[Int]) { capacity =>
+                  log.info("POST '{}' with capacity = {}", path, capacity)
+                  object FixedList extends FixedListFactory(capacity)
+                  alerts = alerts.to(FixedList)
+                  complete(OK, SuccessResponse(OK.intValue, OK.reason,
+                    s"Request of change in-memory alerts list capacity to $capacity",
+                    showOriginIpInfo(ip.toOption))
+                  )
+                }
               }
             }
           }

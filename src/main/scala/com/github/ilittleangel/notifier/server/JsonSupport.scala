@@ -44,6 +44,7 @@ trait JsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val alertsJsonBody: RootJsonFormat[Alerts] = jsonFormat1(Alerts)
   implicit val actionPerformedJsonFormat: RootJsonFormat[ActionPerformed] = jsonFormat5(ActionPerformed)
   implicit val errorResponseJsonFormat: RootJsonFormat[ErrorResponse] = jsonFormat5(ErrorResponse)
+  implicit val successResponseJsonFormat: RootJsonFormat[SuccessResponse] = jsonFormat4(SuccessResponse)
 
   implicit private class StrOps(str: String) {
     def toDestination: Destination = str.toLowerCase match {

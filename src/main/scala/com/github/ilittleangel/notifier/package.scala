@@ -15,6 +15,7 @@ package object notifier {
   final case class ActionPerformed(alert: Alert, isPerformed: Boolean, status: String, description: String, clientIp: Option[String])
   final case class Alerts(alerts: List[ActionPerformed])
   final case class ErrorResponse(status: Int, statusText: String, reason: String, possibleSolution: Option[String] = None, clientIp: Option[String])
+  final case class SuccessResponse(status: Int, statusText: String, reason: String, clientIp: Option[String])
 
   implicit class AlertOps(alert: Alert) {
     def ensureTimestamp(default: Instant): Alert = alert match {
