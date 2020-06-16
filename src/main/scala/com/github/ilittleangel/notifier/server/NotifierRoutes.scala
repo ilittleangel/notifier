@@ -7,12 +7,12 @@ import akka.actor.ActorSystem
 import akka.event.{Logging, LoggingAdapter}
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
-import akka.util.Timeout
 import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
+import com.github.ilittleangel.notifier.utils.Eithers.FuturesEitherOps
+import com.github.ilittleangel.notifier.utils.{FixedList, FixedListFactory}
 import com.github.ilittleangel.notifier.{ActionPerformed, Alert, ErrorResponse, _}
 
 import scala.concurrent.Future
-import scala.concurrent.duration._
 
 
 trait NotifierRoutes extends JsonSupport with Directives {
@@ -22,14 +22,13 @@ trait NotifierRoutes extends JsonSupport with Directives {
 
   lazy val log: LoggingAdapter = Logging(system, classOf[NotifierRoutes])
 
-  implicit lazy val timeout: Timeout = Timeout(10.seconds)
-
   def defaultTs: Instant = Instant.now()
 
-  var alerts = List.empty[ActionPerformed]
+  var alerts: FixedList[ActionPerformed] = new FixedList[ActionPerformed](capacity = 100).empty
 
   val basePath = "notifier/api/v1"
   val alertsEndpoint = "alerts"
+  val adminEndpoint = "admin"
 
   lazy val notifierRoutes: Route =
     pathPrefix(separateOnSlashes(basePath)) {
@@ -42,28 +41,45 @@ trait NotifierRoutes extends JsonSupport with Directives {
                   log.info("POST '{}' with {}", path, alert)
 
                   alert match {
-                    case Alert(Email, _, _, _) =>
+                    case Alert(List(Email), _, _, _) =>
                       complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
                         "Email destination not implemented yet!", clientIp = showOriginIpInfo(ip.toOption)))
 
-                    case Alert(destination, message, Some(props), _) =>
-                      val future = destination.send(message, props)
+                    case Alert(destinations, message, Some(props), _) =>
+                      val future = destinations.map(_.send(message, props)).reduceEithers()
                       evalFutureResponse(future, alert, ip.toOption)
 
-                    case Alert(destination, _, None, _) =>
-                      missedPropertiesResponse(destination, ip.toOption)
+                    case Alert(destinations, _, None, _) =>
+                      missedPropertiesResponse(destinations, ip.toOption)
                   }
 
                 }
               } ~
               get {
                 log.info("GET '{}'", path)
-                complete(OK, alerts)
+                complete(OK, alerts.toList.reverse)
               } ~
               delete {
                 log.info("DELETE '{}'", path)
-                alerts = Nil
-                complete(OK, alerts)
+                alerts = alerts.empty
+                complete(OK, alerts.toList)
+              }
+            }
+          }
+        } ~
+        pathPrefix(adminEndpoint) {
+          path("set-alerts-capacity") {
+            extractMatchedPath { path =>
+              post {
+                parameter("capacity".as[Int]) { capacity =>
+                  log.info("POST '{}' with capacity = {}", path, capacity)
+                  object FixedList extends FixedListFactory(capacity)
+                  alerts = alerts.to(FixedList)
+                  complete(OK, SuccessResponse(OK.intValue, OK.reason,
+                    s"Request of change in-memory alerts list capacity to $capacity",
+                    showOriginIpInfo(ip.toOption))
+                  )
+                }
               }
             }
           }
@@ -84,13 +100,13 @@ trait NotifierRoutes extends JsonSupport with Directives {
 
     onSuccess(future) {
       case Right(status) =>
-        val alertPerformed = response.copy(isPerformed = true, status = status, description = "alert received and performed!")
-        alerts = alertPerformed :: alerts
+        val alertPerformed = response.copy(isPerformed = true, status = status, description = AlertPerformed)
+        alerts = alerts :+ alertPerformed
         complete(OK, alertPerformed)
 
       case Left(error) =>
-        val alertPerformed = response.copy(isPerformed = false, status = error, description = "alert received but not performed!")
-        alerts = alertPerformed :: alerts
+        val alertPerformed = response.copy(isPerformed = false, status = error, description = AlertNotPerformed)
+        alerts = alerts :+ alertPerformed
         complete(BadRequest, alertPerformed)
     }
   }
@@ -98,15 +114,15 @@ trait NotifierRoutes extends JsonSupport with Directives {
   /**
    * Inform the missed properties field in the HTTP request Json body.
    *
-   * @param destination to Slack, Ftp, Email..
+   * @param destinations to Slack, Ftp, Email..
    * @param ip from remote client.
    * @return a Route to response.
    */
-  def missedPropertiesResponse(destination: Destination, ip: Option[InetAddress]): Route = {
-    log.error(s"$destination alert request with no properties")
+  def missedPropertiesResponse(destinations: List[Destination], ip: Option[InetAddress]): Route = {
+    log.error(s"$destinations alert request with no properties")
     val response = ErrorResponse(BadRequest.intValue, BadRequest.reason, "", None, showOriginIpInfo(ip))
 
-    destination match {
+    destinations.head match {
       case Slack =>
         complete(BadRequest, response.copy(
           reason = "Slack alert with no properties",

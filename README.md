@@ -4,11 +4,15 @@ HTTP/Rest server to receive and centralize alarms and be able to send to differe
 
 * [Technologies](#technologies)
 * [Building Notifier](#building-notifier)
+* [Running Notifier](#running-notifier)
 * [Running with docker](#running-with-docker)
 * [Notifier configuration via `notifier.conf`](#notifier-configuration-via-notifierconf)
-* [Send an alert](#send-an-alert)
+* [The Alert resource](#the-alert-resource)
+* [The Performed Alert resource](#the-performed-alert-resource)
 * [Send Ftp alerts](#send-ftp-alerts)
 * [Send Slack alerts](#send-slack-alerts)
+* [Send Multi destinations](#send-multi-destinations)
+* [Troubleshooting](#troubleshooting)
 * [TODOs](#todos)
 
 
@@ -33,6 +37,13 @@ To build the software from the command line just run the following from the root
 ./gradlew build
 ```
 
+## Running Notifier
+
+To start the server with `gradle run`, just run the following command from the root of the project:
+
+```shell script
+./gradlew run --args='--config conf/notifier.conf'
+```
 
 
 ## Running with docker
@@ -49,10 +60,10 @@ To run them locally the easiest way is construct a docker image from the distrib
 And the following images are created or pulled:
 
 ```
-REPOSITORY                                   TAG                 IMAGE ID            CREATED             SIZE
-angelrojo/notifier                           latest              3200e92e8860        46 hours ago        138MB
-atmoz/sftp                                   latest              6345f82053c6        15 months ago       190MB
-openjdk                                      8u181-jre-alpine    d4557f2c5b71        16 months ago       83MB
+REPOSITORY                    TAG                 IMAGE ID            CREATED             SIZE
+angelrojo/notifier            latest              3200e92e8860        46 hours ago        138MB
+atmoz/sftp                    latest              6345f82053c6        15 months ago       190MB
+openjdk                       8u181-jre-alpine    d4557f2c5b71        16 months ago       83MB
 ```
 
 To run it, execute the following from `$PROJECT_HOME/deploy/docker-compose`:
@@ -94,54 +105,73 @@ To shutdown all the containers and remove them:
 * But other properties can be set with this file in the `ftp` section.
 
 
-## Send an alert
+## The Alert resource
 
-* To perform an HTTP request to the notifier we must to provide a Json body with this mandatory fields:
+An **Alert** representation to perform an http request to the Notifier.
 
-```json
+### JSON representation
+```metadata json
 {
-    "destination": "ftp|slack|email",
-    "message": "whatever message want to inform into destination",
-    "properties": {
-        ...
-    }
+    "destination": (string or [string]),
+    "message":     string,
+    "properties":  { map (key: string, value: string) },
+    "ts":          string
 }
 ```
 
-* Destination has to be one of these:
-    - `ftp`
-    - `slack`
-    - `email` 
+### Fields
+| field         | value                                   | description                                                                                                   |
+|:--------------|:----------------------------------------|:--------------------------------------------------------------------------------------------------------------|
+| `destination` | `string` or `list`                      | A single string or a list. The Notifier **accepts both**. Has to be one of these: [`ftp`, `slack`, `email`]   | 
+| `message`     | `string`                                | Whatever message want to inform into destination.                                                             | 
+| `properties`  | `map` (key: `string`, value: `string`)  | Map with the necessary properties to perform destination.                                                     | 
+| `ts`          | `string`                                | The timestamp with an **ISO-8601** format. This field is **optional**. Current instant is set if not present. | 
+
 >Email not implemented yet
 
-* If the request is sent with other destination the response will be a `400 Bad Request` and a message like this:
-```
-The request content was malformed:
-Expected (Ftp, Slack or Email) for 'destination' attribute
-```
-* Provide a `message` field is mandatory as well, if not will get a `400 Bad Request` response with a message like this:
-```
-The request content was malformed:
-Object is missing required member 'message'
-``` 
-* If there is no `properties` the response will be another `400 Bad Request`, but in this case will be more feedback:
-```json
+
+## The Performed Alert resource
+
+A `Performed Alert` is just an enriched [`Alert`](#the-alert-resource). When an `Alert` is received by the server, 
+this is enriched with fields that indicate if the `Alert` was performed and why.
+
+### JSON representation
+```metadata json
 {
-    "status": 400,
-    "statusText": "Bad Request",
-    "reason": "Ftp alert with no properties",
-    "possibleSolution": "Include properties with 'host' and 'path'"
+    "alert": {
+        object (Alert Resource)
+    },
+    "isPerformed": boolean,
+    "status":      string,
+    "description": string"
 }
 ```
+
+### Fields
+| field         | value                                      | description                                             |
+|:--------------|:-------------------------------------------|:--------------------------------------------------------|
+| `alert`       | `object` ([`Alert`](#the-alert-resource))  | The Alert resource in Json representation.              | 
+| `isPerformed` | `boolean`                                  | If the Alert will be able to perform.                   | 
+| `status`      | `string`                                   | The status of try to send the Alert to the destination. | 
+| `description` | `string`                                   | A static message of if the alert was performed or not.  | 
+
+> `status` field could be a successful message or a failed message in case of failure. 
+
+> `description` field can be one of these [`alert received and performed!`, `alert received but not performed!`].
 
 
 ## Send Ftp alerts
 
-### Request
+### Http Request 
 ```
 POST /notifier/api/v1/alerts
 ```
-```json
+
+### Request Body
+
+Provide an [`Alert` resource](#the-alert-resource):
+
+```metadata json
 {
     "destination": "ftp",
     "message": "......",
@@ -157,7 +187,10 @@ POST /notifier/api/v1/alerts
 * This properties can be set via `notifier.conf` file but this way has no preference over the values set in the Json Body request.
 * The property `path` is the file path in our FTP destination. If exists the `message` will be append at the end. But if the file does not exists, the `Ftp` component will be create a new one.
 
-### Successful response
+### Http Response
+
+If successful, this method returns a `200 OK` http status and response body with a json 
+representation of a [`Performed Alert`](#the-performed-alert-resource), or an [error message](docs/troubleshooting.md).
 
 ```json
 {
@@ -178,38 +211,18 @@ POST /notifier/api/v1/alerts
 }
 ```
 
-### Failed responses
-
-* When something wrong happens with a Ftp alert the body response will be as following:
-```json
-{
-    "alert": {
-        ...
-    },
-    "isPerformed": false,
-    "status": "Ftp alert failed with IOResult[error=Connection refused (Connection refused), count=0]",
-    "description": "alert received but not performed!"
-}
-```
-
-* Only the `status` field will be change depending of what is the mistake in the incomming webhook url.
-* In such cases the `status` field give more information about the error. Some of these errors could be:
-
-| error                                                                                                  | description                                   | http status     |
-|:-------------------------------------------------------------------------------------------------------|:----------------------------------------------|-----------------|
-|`"status": "Ftp alert failed with IOResult[error=Connection refused (Connection refused), count=0]"`    | bad port                                      | 400 bad request |
-|`"status": "Ftp alert failed with IOResult[error=Exhausted available authentication methods, count=0]"` | authentication fail (bad username OR password)| 400 bad request |
-|`"status": "Ftp alert failed with an Exception [error=sftp-servexr: Name does not resolve]"`            | unknown server address                        | 400 bad request |
-|`"status": "Ftp alert failed with an Exception [error=sfatp (of class java.lang.String)]"`              | unknown protocol                              | 400 bad request |
-
-
 
 ## Send Slack alerts
 
-### Request
+### Http Request
 ```
 POST /notifier/api/v1/alerts
 ```
+
+### Request Body
+
+Provide an [`Alert` resource](#the-alert-resource):
+
 ```json
 {
     "destination": "slack",
@@ -220,7 +233,10 @@ POST /notifier/api/v1/alerts
 }
 ```
 
-### Successful response
+### Http Response
+
+If successful, this method returns a `200 OK` http status and response body with a json
+representation of a [`Performed Alert`](#the-performed-alert-resource), or an [error message](docs/troubleshooting.md).
 
 ```json
 {
@@ -233,44 +249,74 @@ POST /notifier/api/v1/alerts
         "ts": "2020-03-25T17:44:44.112Z"
     },
     "isPerformed": true,
-    "status": "ok",
+    "status": "Slack webhook request success [status=200 OK] [ok]",
+    "description": "alert received and performed!"
+}
+```
+    
+## Send Multi destinations
+
+### Http Request
+```
+POST /notifier/api/v1/alerts
+```
+
+### Request Body
+
+Provide an [`Alert` resource](#the-alert-resource):
+
+```json
+{
+    "destination": [
+        "slack",
+        "ftp"
+    ],
+    "message": "......",
+    "properties": {
+        "webhook": "https://hooks.slack.com/services/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",
+        "host": "sftp-server",
+        "port": "22",
+        "protocol": "sftp",
+        "path": "/upload/data.txt"
+    }
+}
+```
+
+### Http Response
+
+If successful, this method returns a `200 OK` http status and response body with a json
+representation of a [`Performed Alert`](#the-performed-alert-resource), or an [error message](docs/troubleshooting.md).
+
+```json
+{
+    "alert": {
+        "destination": [
+            "slack",
+            "ftp"
+        ],
+        "message": "......",
+        "properties": {
+            "webhook": "https://hooks.slack.com/services/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",
+            "host": "sftp-server",
+            "port": "22",
+            "protocol": "sftp",
+            "path": "/upload/data.txt"
+        },
+        "ts": "2020-03-25T17:44:44.112Z"
+    },
+    "isPerformed": true,
+    "status": "Slack webhook request success [status=200 OK] [ok]; Ftp alert success [value=Done, count=16]",
     "description": "alert received and performed!"
 }
 ```
 
-### Failed responses
 
-* When something wrong happens with a Slack alert the body response will be as following:
-```json
-{
-    "alert": {
-        ...
-    },
-    "isPerformed": false,
-    "status": "Slack webhook request failed [error=`uri` must have scheme \"http\", \"https\", \"ws\", \"wss\" or no scheme]",
-    "description": "alert received but not performed!"
-}
-```
 
-* Only the `status` field will be change depending of what is the mistake in the incomming webhook url.
-* In such cases the `status` field give more information about the error:
+## Troubleshooting
 
-|   | error                                                                                                                     | http status     |
-|---|:--------------------------------------------------------------------------------------------------------------------------|-----------------|
-| 1 | `"status": "Slack webhook request failed [error=uri must have scheme \"http\", \"https\", \"ws\", \"wss\" or no scheme]"` | 400 bad request |
-| 2 | `"status": "Slack webhook request failed [status=302 Found] [entity=]"`                                                   | 400 bad request |
-| 3 | `"status": "no_team"`                                                                                                     | 400 bad request |
-| 4 | `"status": "no_service"`                                                                                                  | 400 bad request |
-| 5 | `"status": "invalid_token"`                                                                                               | 400 bad request |
+When somethings wrong occurs see [troubleshooting section](docs/troubleshooting.md).
 
-The error depends on where the mistake is in the URL:
-```text
-https://hooks.slaack.com/services/TGYMK17R2/BW144ANYL/ssSOopvymUUAJnMflgu8LFdT
- ^                          ^         ^         ^                 ^
- 1                          2         3         4                 5
-```
 
-    
 
 ## TODOs
 
@@ -281,7 +327,7 @@ https://hooks.slaack.com/services/TGYMK17R2/BW144ANYL/ssSOopvymUUAJnMflgu8LFdT
 * [ ] Provide custom [Exception Handling](https://doc.akka.io/docs/akka-http/current/routing-dsl/exception-handling.html)
 * [X] Docker Compose deployment
 * [X] Kubernetes deployment
-* [ ] Permit multi destinations
+* [X] Permit multi destinations
 * [ ] Limit in-memory alerts
 * [ ] Add `_id` alert with hashing
 * [ ] Index alert into Elasticsearch with the `_id`

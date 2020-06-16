@@ -29,13 +29,15 @@ dependencies {
     //runtime "ch.qos.logback:logback-classic:1.2.3"
 
     testCompile "org.scalatest:scalatest_$scalaMajor:$scalatestVersion"
+    testCompile "org.scalatestplus:scalatestplus-junit_$scalaMajor:$scalatestplusVersion"
     testCompile "com.typesafe.akka:akka-http-testkit_$scalaMajor:$akkaHttpVersion"
+    testCompile "com.typesafe.akka:akka-stream-testkit_$scalaMajor:$akkaStreamVersion"
     testCompile "com.stephenn:scalatest-circe_$scalaMajor:$scalatestCirceVersion"
     testCompile "com.github.stefanbirkner:fake-sftp-server-lambda:$fakeSftpServerVersion"
     testCompile "junit:junit:$junitVersion"
 }
 
-mainClassName = "com.github.ilittleangel.notifier.NotifierServer"
+mainClassName = "${group}.App"
 
 buildscript {
     repositories {
@@ -61,4 +63,4 @@ docker {
 }
 
 dockerPrepare.dependsOn copyDockerfile
-docker.dependsOn build as Task
+docker.dependsOn assembleDist as Task
