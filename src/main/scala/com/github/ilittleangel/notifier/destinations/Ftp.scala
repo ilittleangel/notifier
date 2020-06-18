@@ -4,14 +4,14 @@ import java.io.IOException
 
 import akka.stream.IOResult
 import com.github.ilittleangel.notifier.config.FtpConfig
-import com.github.ilittleangel.notifier.destinations.ftp.AlpakkaFtpClient
+import com.github.ilittleangel.notifier.destinations.clients.FtpClient
 import com.typesafe.config.Config
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
 
-case object Ftp extends Destination with AlpakkaFtpClient {
+case object Ftp extends Destination with FtpClient {
 
   private var ftpConfig: FtpConfig = _
 

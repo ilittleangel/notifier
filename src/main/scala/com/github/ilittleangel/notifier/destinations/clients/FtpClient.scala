@@ -1,4 +1,4 @@
-package com.github.ilittleangel.notifier.destinations.ftp
+package com.github.ilittleangel.notifier.destinations.clients
 
 import java.io.{File, PrintWriter}
 import java.net.InetAddress
@@ -16,7 +16,7 @@ import org.apache.commons.net.ftp.FTPClient
 import scala.concurrent.{ExecutionContext, Future}
 
 
-trait AlpakkaFtpClient {
+trait FtpClient {
 
   /**
    * Public API for uploading files.
