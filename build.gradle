@@ -33,7 +33,7 @@ dependencies {
     testCompile "com.typesafe.akka:akka-http-testkit_$scalaMajor:$akkaHttpVersion"
     testCompile "com.typesafe.akka:akka-stream-testkit_$scalaMajor:$akkaStreamVersion"
     testCompile "com.stephenn:scalatest-circe_$scalaMajor:$scalatestCirceVersion"
-    testCompile "com.github.stefanbirkner:fake-sftp-server-lambda:$fakeSftpServerVersion"
+    testCompile "org.mockftpserver:MockFtpServer:$mockFtpServerVersion"
     testCompile "junit:junit:$junitVersion"
 }
 
