@@ -1,10 +1,10 @@
 package com.github.ilittleangel.notifier.server
 
-import java.net.InetAddress
 import java.time.Instant
 
 import akka.actor.ActorSystem
 import akka.event.{Logging, LoggingAdapter}
+import akka.http.scaladsl.model.RemoteAddress
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
 import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
@@ -25,6 +25,7 @@ trait NotifierRoutes extends JsonSupport with Directives {
   def defaultTs: Instant = Instant.now()
 
   var alerts: FixedList[ActionPerformed] = new FixedList[ActionPerformed](capacity = 100).empty
+  var ip: RemoteAddress = _
 
   val basePath = "notifier/api/v1"
   val alertsEndpoint = "alerts"
@@ -32,7 +33,8 @@ trait NotifierRoutes extends JsonSupport with Directives {
 
   lazy val notifierRoutes: Route =
     pathPrefix(separateOnSlashes(basePath)) {
-      extractClientIP { ip =>
+      extractClientIP { clientIp =>
+        ip = clientIp
         pathPrefix(alertsEndpoint) {
           pathEnd {
             extractMatchedPath { path =>
@@ -43,14 +45,14 @@ trait NotifierRoutes extends JsonSupport with Directives {
                   alert match {
                     case Alert(List(Email), _, _, _) =>
                       complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
-                        "Email destination not implemented yet!", clientIp = showOriginIpInfo(ip.toOption)))
+                        "Email destination not implemented yet!", clientIp = remoteAddressInfo(ip)))
 
                     case Alert(destinations, message, Some(props), _) =>
                       val future = destinations.map(_.send(message, props)).reduceEithers()
-                      evalFutureResponse(future, alert, ip.toOption)
+                      evalFutureResponse(future, alert)
 
                     case Alert(destinations, _, None, _) =>
-                      missedPropertiesResponse(destinations, ip.toOption)
+                      missedPropertiesResponse(destinations)
                   }
 
                 }
@@ -73,12 +75,7 @@ trait NotifierRoutes extends JsonSupport with Directives {
               post {
                 parameter("capacity".as[Int]) { capacity =>
                   log.info("POST '{}' with capacity = {}", path, capacity)
-                  object FixedList extends FixedListFactory(capacity)
-                  alerts = alerts.to(FixedList)
-                  complete(OK, SuccessResponse(OK.intValue, OK.reason,
-                    s"Request of change in-memory alerts list capacity to $capacity",
-                    showOriginIpInfo(ip.toOption))
-                  )
+                  setCapacity(capacity)
                 }
               }
             }
@@ -95,8 +92,8 @@ trait NotifierRoutes extends JsonSupport with Directives {
    * @param alert  the alert itself.
    * @return a Route for response.
    */
-  def evalFutureResponse(future: Future[Either[String, String]], alert: Alert, ip: Option[InetAddress]): Route = {
-    val response = ActionPerformed(alert.ensureTimestamp(defaultTs), isPerformed = false, "", "", showOriginIpInfo(ip))
+  def evalFutureResponse(future: Future[Either[String, String]], alert: Alert): Route = {
+    val response = ActionPerformed(alert.ensureTimestamp(defaultTs), isPerformed = false, "", "", remoteAddressInfo(ip))
 
     onSuccess(future) {
       case Right(status) =>
@@ -115,12 +112,11 @@ trait NotifierRoutes extends JsonSupport with Directives {
    * Inform the missed properties field in the HTTP request Json body.
    *
    * @param destinations to Slack, Ftp, Email..
-   * @param ip from remote client.
    * @return a Route to response.
    */
-  def missedPropertiesResponse(destinations: List[Destination], ip: Option[InetAddress]): Route = {
-    log.error(s"$destinations alert request with no properties")
-    val response = ErrorResponse(BadRequest.intValue, BadRequest.reason, "", None, showOriginIpInfo(ip))
+  def missedPropertiesResponse(destinations: List[Destination]): Route = {
+    log.error(s"{} alert request with no properties", destinations)
+    val response = ErrorResponse(BadRequest.intValue, BadRequest.reason, "", None, remoteAddressInfo(ip))
 
     destinations.head match {
       case Slack =>
@@ -143,23 +139,19 @@ trait NotifierRoutes extends JsonSupport with Directives {
     }
   }
 
-
   /**
-   * Show the client's IP if the specific config attribute `show_origin_ip` is true.
+   * Set the FixedList capacity.
    *
-   * @param ip extracted from either the X-Forwarded-For, Remote-Address or X-Real-IP HTTP header.
-   * @return a RemoteClientIp object if the properly config attribute is true.
+   * @param capacity of the FixedList.
+   * @return a Route to response.
    */
-  def showOriginIpInfo(ip: Option[InetAddress]): Option[String] = {
-    val hostname = applyOrElse(ip)(_.getHostName, "unknown")
-    val hostAddress = applyOrElse(ip)(_.getHostAddress, "unknown")
-    val ipInfo = s"$hostname - $hostAddress"
-    log.debug(s"HTTP request performed from: $ipInfo")
-
-    ip match {
-      case Some(_) => Some(ipInfo)
-      case None => None
-    }
+  def setCapacity(capacity: Int): Route = {
+    object FixedList extends FixedListFactory(capacity)
+    alerts = alerts.to(FixedList)
+    complete(OK, SuccessResponse(OK.intValue, OK.reason,
+      s"Request of change in-memory alerts list capacity to $capacity",
+      remoteAddressInfo(ip))
+    )
   }
 
 }

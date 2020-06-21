@@ -3,6 +3,7 @@ package com.github.ilittleangel
 import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneOffset}
 
+import akka.http.scaladsl.model.RemoteAddress
 import com.github.ilittleangel.notifier.destinations.Destination
 import com.typesafe.config.Config
 
@@ -35,6 +36,16 @@ package object notifier {
   }
 
   def applyOrElse[A, B](optValue: Option[A])(f: A => B, default: B): B = optValue.map(f(_)).getOrElse(default)
+
+  val remoteAddressInfo: RemoteAddress => Option[String] = (ip: RemoteAddress) => {
+    ip.toOption match {
+      case ip @ Some(_) =>
+        val hostname = applyOrElse(ip)(_.getHostName, "unknown")
+        val hostAddress = applyOrElse(ip)(_.getHostAddress, "unknown")
+        Some(s"$hostname - $hostAddress")
+      case None => None
+    }
+  }
 
   /**
    * Global constants
