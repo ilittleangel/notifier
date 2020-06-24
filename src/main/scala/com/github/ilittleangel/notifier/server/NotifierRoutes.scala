@@ -4,7 +4,7 @@ import java.time.Instant
 
 import akka.actor.ActorSystem
 import akka.event.{Logging, LoggingAdapter}
-import akka.http.scaladsl.model.RemoteAddress
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, RemoteAddress}
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
 import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
@@ -76,6 +76,20 @@ trait NotifierRoutes extends JsonSupport with Directives with Eithers {
                   log.info("POST '{}' with capacity = {}", path, capacity)
                   setCapacity(capacity)
                 }
+              }
+            }
+          } ~
+          path("logging") {
+            extractMatchedPath { path =>
+              post {
+                parameter("level".as[String]) { level =>
+                  log.info("POST '{}' with logLevel = {}", path, level)
+                  setLogLevel(level)
+                }
+              } ~
+              get {
+                log.info("GET '{}'", path)
+                getLogLevel
               }
             }
           }
@@ -151,6 +165,46 @@ trait NotifierRoutes extends JsonSupport with Directives with Eithers {
       s"Request of change in-memory alerts list capacity to $capacity",
       remoteAddressInfo(ip))
     )
+  }
+
+  /**
+   * Online set up the logging level through `system.eventStream`.
+   *
+   * @param level string representation of the logging level.
+   * @return a Route to response.
+   */
+  def setLogLevel(level: String): Route = {
+    Logging.levelFor(level) match {
+      case Some(loglevel) =>
+        system.eventStream.setLogLevel(loglevel)
+        log.info("setLogLevel({}) succeed", level)
+        complete(OK, SuccessResponse(OK.intValue, OK.reason, clientIp = remoteAddressInfo(ip),
+          reason = s"Request of change logging level to '${level.toUpperCase}'"))
+
+      case None =>
+        log.error("setLogLevel({}) failed", level)
+        complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason, clientIp = remoteAddressInfo(ip),
+          reason = s"Request of change logging level to '$level'",
+          possibleSolution = Some("Logging level must be one of [off|error|info|debug|warning]"))
+        )
+    }
+  }
+
+  /**
+   * Inform with the current Logging Level.
+   * The `pattern matching` statement has to be in descending order.
+   *
+   * @return a Route to response.
+   */
+  def getLogLevel: Route = {
+    val level = system.eventStream.logLevel match {
+      case Logging.DebugLevel => "DEBUG"
+      case Logging.InfoLevel => "INFO"
+      case Logging.WarningLevel => "WARNING"
+      case Logging.ErrorLevel => "ERROR"
+      case _ => "OFF"
+    }
+    complete(OK, HttpEntity(ContentTypes.`application/json`, s"""{ "level": "$level" }"""))
   }
 
 }

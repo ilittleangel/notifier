@@ -87,6 +87,153 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       alerts should have size 2
     }
 
+    s"POST '/$basePath/$adminEndpoint' be able to reject change an unknown logging level" in {
+      val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=unknown")
+      request ~> routes ~> check {
+        status shouldBe BadRequest
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[ErrorResponse] shouldBe ErrorResponse(
+          status = BadRequest.intValue,
+          statusText = BadRequest.reason,
+          reason = "Request of change logging level to 'unknown'",
+          possibleSolution = Some("Logging level must be one of [off|error|info|debug|warning]"),
+          clientIp = None
+        )
+      }
+    }
+
+    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to OFF" in {
+      val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=off")
+      request ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[SuccessResponse] shouldBe SuccessResponse(
+          status = OK.intValue,
+          statusText = OK.reason,
+          reason = "Request of change logging level to 'OFF'",
+          clientIp = None
+        )
+      }
+      log.isInfoEnabled shouldBe false
+    }
+
+    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to ERROR" in {
+      val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=error")
+      request ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[SuccessResponse] shouldBe SuccessResponse(
+          status = OK.intValue,
+          statusText = OK.reason,
+          reason = "Request of change logging level to 'ERROR'",
+          clientIp = None
+        )
+      }
+      log.isInfoEnabled shouldBe false
+      log.isErrorEnabled shouldBe true
+    }
+
+    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to WARNING" in {
+      val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=warning")
+      request ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[SuccessResponse] shouldBe SuccessResponse(
+          status = OK.intValue,
+          statusText = OK.reason,
+          reason = "Request of change logging level to 'WARNING'",
+          clientIp = None
+        )
+      }
+      log.isWarningEnabled shouldBe true
+    }
+
+    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to INFO" in {
+      val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=info")
+      request ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[SuccessResponse] shouldBe SuccessResponse(
+          status = OK.intValue,
+          statusText = OK.reason,
+          reason = "Request of change logging level to 'INFO'",
+          clientIp = None
+        )
+      }
+      log.isInfoEnabled shouldBe true
+    }
+
+    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to DEBUG" in {
+      val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=debug")
+      request ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[SuccessResponse] shouldBe SuccessResponse(
+          status = OK.intValue,
+          statusText = OK.reason,
+          reason = "Request of change logging level to 'DEBUG'",
+          clientIp = None
+        )
+      }
+      log.isDebugEnabled shouldBe true
+    }
+
+    s"GET '/$basePath/$adminEndpoint' return the current logging level ERROR" in {
+      Post(uri = s"/$basePath/$adminEndpoint/logging?level=error") ~> routes
+      Get(uri = s"/$basePath/$adminEndpoint/logging") ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[String] should matchJson(
+          """
+            |{
+            |   "level": "ERROR"
+            |}
+            |""".stripMargin)
+      }
+    }
+
+    s"GET '/$basePath/$adminEndpoint' return the current logging level WARNING" in {
+      Post(uri = s"/$basePath/$adminEndpoint/logging?level=warning") ~> routes
+      Get(uri = s"/$basePath/$adminEndpoint/logging") ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[String] should matchJson(
+          """
+            |{
+            |   "level": "WARNING"
+            |}
+            |""".stripMargin)
+      }
+    }
+
+    s"GET '/$basePath/$adminEndpoint' return the current logging level INFO" in {
+      Post(uri = s"/$basePath/$adminEndpoint/logging?level=info") ~> routes
+      Get(uri = s"/$basePath/$adminEndpoint/logging") ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[String] should matchJson(
+          """
+            |{
+            |   "level": "INFO"
+            |}
+            |""".stripMargin)
+      }
+    }
+
+    s"GET '/$basePath/$adminEndpoint' return the current logging level DEBUG" in {
+      Post(uri = s"/$basePath/$adminEndpoint/logging?level=debug") ~> routes
+      Get(uri = s"/$basePath/$adminEndpoint/logging") ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[String] should matchJson(
+          """
+            |{
+            |   "level": "DEBUG"
+            |}
+            |""".stripMargin)
+      }
+    }
+
   }
 
 }
