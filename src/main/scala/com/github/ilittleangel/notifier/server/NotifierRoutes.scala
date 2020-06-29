@@ -8,14 +8,13 @@ import akka.http.scaladsl.model.RemoteAddress
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, OK}
 import akka.http.scaladsl.server.{Directives, Route}
 import com.github.ilittleangel.notifier.destinations.{Destination, Email, Ftp, Slack}
-import com.github.ilittleangel.notifier.utils.Eithers.FuturesEitherOps
-import com.github.ilittleangel.notifier.utils.{FixedList, FixedListFactory}
+import com.github.ilittleangel.notifier.utils.{Eithers, FixedList, FixedListFactory}
 import com.github.ilittleangel.notifier.{ActionPerformed, Alert, ErrorResponse, _}
 
 import scala.concurrent.Future
 
 
-trait NotifierRoutes extends JsonSupport with Directives {
+trait NotifierRoutes extends JsonSupport with Directives with Eithers {
 
   // these abstract will be provided by the NotifierServer
   implicit def system: ActorSystem

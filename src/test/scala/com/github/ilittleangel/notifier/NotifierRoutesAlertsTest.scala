@@ -10,7 +10,6 @@ import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.util.Timeout
 import com.github.ilittleangel.notifier.destinations.Ftp
 import com.github.ilittleangel.notifier.server.NotifierRoutes
-import com.github.ilittleangel.notifier.utils.Eithers.separator
 import com.stephenn.scalatest.circe.JsonMatchers
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import org.junit.runner.RunWith
