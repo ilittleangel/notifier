@@ -42,10 +42,6 @@ trait NotifierRoutes extends JsonSupport with Directives with Eithers {
                   log.info("POST '{}' with {}", path, alert)
 
                   alert match {
-                    case Alert(List(Email), _, _, _) =>
-                      complete(BadRequest, ErrorResponse(BadRequest.intValue, BadRequest.reason,
-                        "Email destination not implemented yet!", clientIp = remoteAddressInfo(ip)))
-
                     case Alert(destinations, message, Some(props), _) =>
                       val future = destinations.map(_.send(message, props)).reduceEithers()
                       evalFutureResponse(future, alert)

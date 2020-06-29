@@ -8,22 +8,33 @@ import akka.http.scaladsl.model.headers.`Remote-Address`
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, RemoteAddress}
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.util.Timeout
-import com.github.ilittleangel.notifier.destinations.Ftp
+import com.github.ilittleangel.notifier.destinations.{Email, Ftp}
 import com.github.ilittleangel.notifier.server.NotifierRoutes
+import com.icegreen.greenmail.util.ServerSetupTest
 import com.stephenn.scalatest.circe.JsonMatchers
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
+import javax.mail.Message
+import javax.mail.internet.InternetAddress
 import org.junit.runner.RunWith
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatestplus.junit.JUnitRunner
 
 import scala.concurrent.duration.DurationInt
 
 
 @RunWith(classOf[JUnitRunner])
-class NotifierRoutesAlertsTest extends AnyWordSpec
-  with Matchers with ScalatestRouteTest with JsonMatchers with NotifierRoutes with BeforeAndAfterAll with MockFtp {
+class NotifierRoutesAlertsTest
+  extends AnyWordSpec
+    with Matchers
+    with ScalatestRouteTest
+    with JsonMatchers
+    with NotifierRoutes
+    with BeforeAndAfterAll
+    with BeforeAndAfterEach
+    with MockFtp
+    with MockMail {
 
   private val routes = notifierRoutes
   private val ts = Instant.now()
@@ -33,13 +44,29 @@ class NotifierRoutesAlertsTest extends AnyWordSpec
     val config = ConfigFactory.empty()
       .withValue("ftp.username", ConfigValueFactory.fromAnyRef(username))
       .withValue("ftp.password", ConfigValueFactory.fromAnyRef(password))
+      .withValue("email.server", ConfigValueFactory.fromAnyRef("localhost"))
+      .withValue("email.port", ConfigValueFactory.fromAnyRef(ServerSetupTest.SMTP.getPort))
+      .withValue("email.user", ConfigValueFactory.fromAnyRef(emailUser))
+      .withValue("email.pass", ConfigValueFactory.fromAnyRef(emailPass))
+      .withValue("email.ttls", ConfigValueFactory.fromAnyRef(false))
+      .withValue("email.html.button.enable", ConfigValueFactory.fromAnyRef(true))
+      .withValue("email.html.button.name", ConfigValueFactory.fromAnyRef("notifier"))
+      .withValue("email.html.button.link", ConfigValueFactory.fromAnyRef("http://localhost:8080/whatever"))
 
     Ftp.configure(config)
     ftpServer.start()
+
+    Email.configure(config)
+    mailServer.start()
   }
 
   override def afterAll(): Unit = {
     ftpServer.stop()
+    mailServer.stop()
+  }
+
+  override def afterEach(): Unit = {
+    mailServer.purgeEmailFromAllMailboxes()
   }
 
   private implicit val testTimeout: RouteTestTimeout = RouteTestTimeout(Timeout(10.seconds).duration)
@@ -505,6 +532,237 @@ class NotifierRoutesAlertsTest extends AnyWordSpec
       alerts.last.status shouldBe failedStatus + separator + failedStatus
       alerts.last.alert.destination shouldBe List(Ftp, Ftp)
       alerts.last.alert.message shouldBe "alarm process 5"
+    }
+
+    s"POST '/$basePath/$alertsEndpoint' be able to accept Email alerts" in {
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "Email",
+           |   "message": "alarm process",
+           |   "properties": {
+           |       "email_to": "business@email.com",
+           |       "subject": "test notifier"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
+
+      request ~> routes ~> check {
+        status shouldBe OK
+        responseAs[String] should matchJson(
+          s"""
+             |{
+             |   "alert": {
+             |   "destination": ["email"],
+             |       "message": "alarm process",
+             |       "properties": {
+             |           "email_to": "business@email.com",
+             |           "subject": "test notifier"
+             |       },
+             |       "ts":"$tsWithFormat"
+             |    },
+             |    "description": "$AlertPerformed",
+             |    "isPerformed": true,
+             |    "status": "Email alert success"
+             |}
+             |""".stripMargin)
+      }
+
+      mailServer.waitForIncomingEmail(emailTimeout, 1)
+
+      val messages = mailServer.getReceivedMessages.toList
+      messages should not be empty
+      messages should have size 1
+      messages.head.getSubject shouldBe "test notifier"
+      messages.head.getContentType should include ("text/html")
+      messages.head.getContent.toString should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.head.getContent.toString should include ("http://localhost:8080/whatever")
+      messages.head.getContent.toString should include ("style=\"visibility:visible;")
+      messages.head.getContent.toString should include ("href=\"http://localhost:8080/whatever\">OPEN notifier</a>")
+      messages.head.getFrom.toList.head shouldBe new InternetAddress(emailUser)
+      messages.head.getAllRecipients.toList.head shouldBe new InternetAddress("business@email.com")
+    }
+
+    s"POST '/$basePath/$alertsEndpoint' be able to accept Email alerts with multi TO address" in {
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "Email",
+           |   "message": "alarm process",
+           |   "properties": {
+           |       "email_to": "business1@email.com, business2@email.com",
+           |       "subject": "test notifier"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
+
+      request ~> routes ~> check {
+        status shouldBe OK
+        responseAs[String] should matchJson(
+          s"""
+             |{
+             |   "alert": {
+             |   "destination": ["email"],
+             |       "message": "alarm process",
+             |       "properties": {
+             |           "email_to": "business1@email.com, business2@email.com",
+             |           "subject": "test notifier"
+             |       },
+             |       "ts":"$tsWithFormat"
+             |    },
+             |    "description": "$AlertPerformed",
+             |    "isPerformed": true,
+             |    "status": "Email alert success"
+             |}
+             |""".stripMargin)
+      }
+
+      mailServer.waitForIncomingEmail(emailTimeout, 2)
+
+      val messages = mailServer.getReceivedMessages.toList
+      messages should not be empty
+      messages should have size 2
+      messages.head.getSubject shouldBe "test notifier"
+      messages.last.getSubject shouldBe "test notifier"
+      messages.head.getContent.toString should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.last.getContent.toString should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.head.getFrom.toList.head shouldBe new InternetAddress(emailUser)
+      messages.last.getFrom.toList.head shouldBe new InternetAddress(emailUser)
+      messages.head.getAllRecipients.toList shouldBe List(
+        new InternetAddress("business1@email.com"),
+        new InternetAddress("business2@email.com")
+      )
+      messages.last.getAllRecipients.toList shouldBe List(
+        new InternetAddress("business1@email.com"),
+        new InternetAddress("business2@email.com")
+      )
+    }
+
+    s"POST '/$basePath/$alertsEndpoint' be able to accept Email alerts with multi CC address" in {
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "Email",
+           |   "message": "alarm process",
+           |   "properties": {
+           |       "email_to": "business1@email.com, business2@email.com",
+           |       "email_cc": "business3@email.com, business4@email.com",
+           |       "subject": "test notifier"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
+
+      request ~> routes ~> check {
+        status shouldBe OK
+        responseAs[String] should matchJson(
+          s"""
+             |{
+             |   "alert": {
+             |   "destination": ["email"],
+             |       "message": "alarm process",
+             |       "properties": {
+             |           "email_to": "business1@email.com, business2@email.com",
+             |           "email_cc": "business3@email.com, business4@email.com",
+             |           "subject": "test notifier"
+             |       },
+             |       "ts":"$tsWithFormat"
+             |    },
+             |    "description": "$AlertPerformed",
+             |    "isPerformed": true,
+             |    "status": "Email alert success"
+             |}
+             |""".stripMargin)
+      }
+
+      mailServer.waitForIncomingEmail(emailTimeout, 4)
+
+      val messages = mailServer.getReceivedMessages.toList
+      messages should not be empty
+      messages should have size 4
+      messages.map(_.getSubject).distinct shouldBe List("test notifier")
+      messages.map(_.getContent.toString).distinct should have size 1
+      messages.map(_.getContent.toString).distinct.head should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.flatMap(_.getFrom).distinct shouldBe List(new InternetAddress(emailUser))
+      messages.head.getRecipients(Message.RecipientType.TO).toList shouldBe List(
+        new InternetAddress("business1@email.com"),
+        new InternetAddress("business2@email.com")
+      )
+      messages.head.getRecipients(Message.RecipientType.CC).toList shouldBe List(
+        new InternetAddress("business3@email.com"),
+        new InternetAddress("business4@email.com")
+      )
+    }
+
+    s"POST '/$basePath/$alertsEndpoint' be able to accept Email alerts with no authentication" in {
+      // remove users but not necessary
+      mailServer.reset()
+
+      // configure with a passwordless configuration the Email destination
+      val config = ConfigFactory.parseString(
+        s"""
+           |email {
+           |    server: "127.0.0.1"
+           |    port: ${ServerSetupTest.SMTP.getPort}
+           |    user: "$emailUser"
+           |    ttls: false
+           |    html.button.enable: false
+           |}
+           |""".stripMargin)
+
+      Email.configure(config)
+
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "Email",
+           |   "message": "alarm process",
+           |   "properties": {
+           |       "email_to": "business@email.com",
+           |       "subject": "test notifier"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
+
+      request ~> routes ~> check {
+        status shouldBe OK
+        responseAs[String] should matchJson(
+          s"""
+             |{
+             |   "alert": {
+             |   "destination": ["email"],
+             |       "message": "alarm process",
+             |       "properties": {
+             |           "email_to": "business@email.com",
+             |           "subject": "test notifier"
+             |       },
+             |       "ts":"$tsWithFormat"
+             |    },
+             |    "description": "$AlertPerformed",
+             |    "isPerformed": true,
+             |    "status": "Email alert success"
+             |}
+             |""".stripMargin)
+      }
+
+      mailServer.waitForIncomingEmail(emailTimeout, 1)
+
+      val messages = mailServer.getReceivedMessages.toList
+      messages should not be empty
+      messages should have size 1
+      messages.head.getSubject shouldBe "test notifier"
+      messages.head.getContentType should include ("text/html")
+      messages.head.getContent.toString should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.head.getContent.toString should include ("style=\"visibility:hidden;")
+      messages.head.getFrom.toList.head shouldBe new InternetAddress(emailUser)
+      messages.head.getAllRecipients.toList.head shouldBe new InternetAddress("business@email.com")
     }
 
   }

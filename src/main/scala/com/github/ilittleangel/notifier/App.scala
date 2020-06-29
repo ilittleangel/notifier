@@ -3,7 +3,7 @@ package com.github.ilittleangel.notifier
 import java.io.File
 
 import com.github.ilittleangel.notifier.config.ServerConfig
-import com.github.ilittleangel.notifier.destinations.Ftp
+import com.github.ilittleangel.notifier.destinations.{Email, Ftp}
 import com.github.ilittleangel.notifier.server.NotifierServer
 import com.typesafe.config.ConfigFactory
 import scopt.OptionParser
@@ -29,6 +29,7 @@ object App extends App {
       val config = ConfigFactory.parseFile(path)
       val serverConfig = ServerConfig.apply(config)
       Ftp.configure(config)
+      Email.configure(config)
       NotifierServer.start(host = serverConfig.interface, port = serverConfig.port)
 
     case None =>
