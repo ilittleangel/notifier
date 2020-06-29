@@ -41,8 +41,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
           s"""
              |{
              |    "reason": "Request of change in-memory alerts list capacity to 10",
-             |    "status": ${OK.intValue},
-             |    "statusText": "${OK.reason}"
+             |    "status": "200 OK"
              |}
              |""".stripMargin)
       }
@@ -60,7 +59,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
        */
 
       // 1
-      alerts = new FixedList[ActionPerformed](capacity = 3)
+      alerts = new FixedList[AlertPerformed](capacity = 3)
       alerts should have size 0
 
       // 2
@@ -93,8 +92,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
         status shouldBe BadRequest
         contentType shouldBe ContentTypes.`application/json`
         responseAs[ErrorResponse] shouldBe ErrorResponse(
-          status = BadRequest.intValue,
-          statusText = BadRequest.reason,
+          status = BadRequest,
           reason = "Request of change logging level to 'unknown'",
           possibleSolution = Some("Logging level must be one of [off|error|info|debug|warning]"),
           clientIp = None
@@ -108,8 +106,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
         status shouldBe OK
         contentType shouldBe ContentTypes.`application/json`
         responseAs[SuccessResponse] shouldBe SuccessResponse(
-          status = OK.intValue,
-          statusText = OK.reason,
+          status = OK,
           reason = "Request of change logging level to 'OFF'",
           clientIp = None
         )
@@ -123,8 +120,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
         status shouldBe OK
         contentType shouldBe ContentTypes.`application/json`
         responseAs[SuccessResponse] shouldBe SuccessResponse(
-          status = OK.intValue,
-          statusText = OK.reason,
+          status = OK,
           reason = "Request of change logging level to 'ERROR'",
           clientIp = None
         )
@@ -139,8 +135,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
         status shouldBe OK
         contentType shouldBe ContentTypes.`application/json`
         responseAs[SuccessResponse] shouldBe SuccessResponse(
-          status = OK.intValue,
-          statusText = OK.reason,
+          status = OK,
           reason = "Request of change logging level to 'WARNING'",
           clientIp = None
         )
@@ -154,8 +149,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
         status shouldBe OK
         contentType shouldBe ContentTypes.`application/json`
         responseAs[SuccessResponse] shouldBe SuccessResponse(
-          status = OK.intValue,
-          statusText = OK.reason,
+          status = OK,
           reason = "Request of change logging level to 'INFO'",
           clientIp = None
         )
@@ -169,8 +163,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
         status shouldBe OK
         contentType shouldBe ContentTypes.`application/json`
         responseAs[SuccessResponse] shouldBe SuccessResponse(
-          status = OK.intValue,
-          statusText = OK.reason,
+          status = OK,
           reason = "Request of change logging level to 'DEBUG'",
           clientIp = None
         )

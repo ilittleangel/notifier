@@ -12,12 +12,12 @@ import org.scalatestplus.junit.JUnitRunner
 class FixedListTest extends AnyWordSpec with Matchers {
 
   private val mockAlert = Alert(List(Slack), s"message", None, None)
-  private val actionPerformed = ActionPerformed(mockAlert, isPerformed = false, "", "", None)
+  private val actionPerformed = AlertPerformed(mockAlert, isPerformed = false, "", "", None)
 
   "FixedList" should {
 
     "be able to manage a Scala collection with no truncated elements if capacity is not exceeded" in {
-      var alerts = new FixedList[ActionPerformed](capacity = 5).empty
+      var alerts = new FixedList[AlertPerformed](capacity = 5).empty
 
       (1 to 10).foreach { i =>
         alerts = alerts :+ actionPerformed.copy(alert = mockAlert.copy(message = s"message_$i"))
@@ -29,7 +29,7 @@ class FixedListTest extends AnyWordSpec with Matchers {
     }
 
     "be able to manage a Scala collection with the first elements truncated if capacity is exceeded" in {
-      var alerts = new FixedList[ActionPerformed](capacity = 20).empty
+      var alerts = new FixedList[AlertPerformed](capacity = 20).empty
 
       (1 to 10).foreach { i =>
         alerts = alerts :+ actionPerformed.copy(alert = mockAlert.copy(message = s"message_$i"))

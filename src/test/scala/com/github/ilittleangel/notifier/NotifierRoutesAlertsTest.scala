@@ -8,6 +8,7 @@ import akka.http.scaladsl.model.headers.`Remote-Address`
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, RemoteAddress}
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.util.Timeout
+import com.github.ilittleangel.notifier.Constants._
 import com.github.ilittleangel.notifier.destinations.{Email, Ftp}
 import com.github.ilittleangel.notifier.server.NotifierRoutes
 import com.icegreen.greenmail.util.ServerSetupTest
@@ -102,10 +103,9 @@ class NotifierRoutesAlertsTest
         responseAs[String] should matchJson(
           s"""
             |{
-            |   "status": ${BadRequest.intValue},
-            |   "statusText": "${BadRequest.reason}",
-            |   "reason": "Slack alert with no properties",
-            |   "possibleSolution": "Include properties with 'webhook' url"
+            |   "status": "400 Bad Request",
+            |   "reason": "Some of these destinations List(Slack) has no properties",
+            |   "possibleSolution": "Include required properties. See documentation"
             |}
             |""".stripMargin)
       }
@@ -130,10 +130,9 @@ class NotifierRoutesAlertsTest
         responseAs[String] should matchJson(
           s"""
             |{
-            |   "status": ${BadRequest.intValue},
-            |   "statusText": "${BadRequest.reason}",
-            |   "reason": "Ftp alert with no properties",
-            |   "possibleSolution": "Include properties with 'host' and 'path'"
+            |   "status": "400 Bad Request",
+            |   "reason": "Some of these destinations List(Ftp) has no properties",
+            |   "possibleSolution": "Include required properties. See documentation"
             |}
             |""".stripMargin)
       }
@@ -180,7 +179,7 @@ class NotifierRoutesAlertsTest
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]",
-               |   "description": "$AlertPerformed"
+               |   "description": "$AlertPerformedMsg"
                |}
                |""".stripMargin)
         }
@@ -188,7 +187,7 @@ class NotifierRoutesAlertsTest
         // checking alerts memory storage
         alerts should have size 1
         alerts.last.isPerformed shouldBe true
-        alerts.last.description shouldBe AlertPerformed
+        alerts.last.description shouldBe AlertPerformedMsg
         alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]"
         alerts.last.alert.destination shouldBe List(Ftp)
         alerts.last.alert.ts shouldBe Some(ts)
@@ -238,7 +237,7 @@ class NotifierRoutesAlertsTest
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]",
-               |   "description": "$AlertPerformed"
+               |   "description": "$AlertPerformedMsg"
                |}
                |""".stripMargin)
         }
@@ -246,7 +245,7 @@ class NotifierRoutesAlertsTest
         // checking alerts memory storage
         alerts should have size 2
         alerts.last.isPerformed shouldBe true
-        alerts.last.description shouldBe AlertPerformed
+        alerts.last.description shouldBe AlertPerformedMsg
         alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]"
         alerts.last.alert.destination shouldBe List(Ftp)
         alerts.last.alert.message shouldBe "alarm process 2"
@@ -296,7 +295,7 @@ class NotifierRoutesAlertsTest
                |   },
                |   "isPerformed": false,
                |   "status": "Ftp alert failed with an Exception [error=unsupported protocol]",
-               |   "description": "$AlertNotPerformed"
+               |   "description": "$AlertNotPerformedMsg"
                |}
                |""".stripMargin)
         }
@@ -304,7 +303,7 @@ class NotifierRoutesAlertsTest
         // checking alerts memory storage
         alerts should have size 3
         alerts.last.isPerformed shouldBe false
-        alerts.last.description shouldBe AlertNotPerformed
+        alerts.last.description shouldBe AlertNotPerformedMsg
         alerts.last.status shouldBe "Ftp alert failed with an Exception [error=unsupported protocol]"
         alerts.last.alert.destination shouldBe List(Ftp)
         alerts.last.alert.message shouldBe "alarm process 3"
@@ -338,7 +337,7 @@ class NotifierRoutesAlertsTest
             |      },
             |      "isPerformed": false,
             |      "status": "Ftp alert failed with an Exception [error=unsupported protocol]",
-            |      "description": "$AlertNotPerformed"
+            |      "description": "$AlertNotPerformedMsg"
             |   },
             |   {
             |      "alert": {
@@ -354,7 +353,7 @@ class NotifierRoutesAlertsTest
             |      },
             |      "isPerformed": true,
             |      "status": "Ftp alert success [value=Done, count=16]",
-            |      "description": "$AlertPerformed"
+            |      "description": "$AlertPerformedMsg"
             |   },
             |   {
             |      "alert": {
@@ -370,7 +369,7 @@ class NotifierRoutesAlertsTest
             |      },
             |      "isPerformed": true,
             |      "status": "Ftp alert success [value=Done, count=16]",
-            |      "description": "$AlertPerformed"
+            |      "description": "$AlertPerformedMsg"
             |   }
             |]
             |""".stripMargin)
@@ -393,10 +392,9 @@ class NotifierRoutesAlertsTest
         responseAs[String] should matchJson(
           s"""
              |{
-             |   "status": ${BadRequest.intValue},
-             |   "statusText": "${BadRequest.reason}",
-             |   "reason": "Slack alert with no properties",
-             |   "possibleSolution": "Include properties with 'webhook' url",
+             |   "status": "400 Bad Request",
+             |   "reason": "Some of these destinations List(Slack) has no properties",
+             |   "possibleSolution": "Include required properties. See documentation",
              |   "clientIp": "localhost - 127.0.0.1"
              |}
              |""".stripMargin)
@@ -458,7 +456,7 @@ class NotifierRoutesAlertsTest
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]; Ftp alert success [value=Done, count=16]",
-               |   "description": "$AlertPerformed"
+               |   "description": "$AlertPerformedMsg"
                |}
                |""".stripMargin)
         }
@@ -466,7 +464,7 @@ class NotifierRoutesAlertsTest
         // checking alerts in-memory
         alerts should have size 1
         alerts.last.isPerformed shouldBe true
-        alerts.last.description shouldBe AlertPerformed
+        alerts.last.description shouldBe AlertPerformedMsg
         alerts.last.status.split(separator).length shouldBe 2
         alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]; Ftp alert success [value=Done, count=16]"
         alerts.last.alert.destination shouldBe List(Ftp, Ftp)
@@ -520,7 +518,7 @@ class NotifierRoutesAlertsTest
              |   },
              |   "isPerformed": false,
              |   "status": "$failedStatus$separator$failedStatus",
-             |   "description": "$AlertNotPerformed"
+             |   "description": "$AlertNotPerformedMsg"
              |}
              |""".stripMargin)
       }
@@ -528,7 +526,7 @@ class NotifierRoutesAlertsTest
       // checking alerts in-memory
       alerts should have size 2
       alerts.last.isPerformed shouldBe false
-      alerts.last.description shouldBe AlertNotPerformed
+      alerts.last.description shouldBe AlertNotPerformedMsg
       alerts.last.status shouldBe failedStatus + separator + failedStatus
       alerts.last.alert.destination shouldBe List(Ftp, Ftp)
       alerts.last.alert.message shouldBe "alarm process 5"
@@ -563,7 +561,7 @@ class NotifierRoutesAlertsTest
              |       },
              |       "ts":"$tsWithFormat"
              |    },
-             |    "description": "$AlertPerformed",
+             |    "description": "$AlertPerformedMsg",
              |    "isPerformed": true,
              |    "status": "Email alert success"
              |}
@@ -614,7 +612,7 @@ class NotifierRoutesAlertsTest
              |       },
              |       "ts":"$tsWithFormat"
              |    },
-             |    "description": "$AlertPerformed",
+             |    "description": "$AlertPerformedMsg",
              |    "isPerformed": true,
              |    "status": "Email alert success"
              |}
@@ -673,7 +671,7 @@ class NotifierRoutesAlertsTest
              |       },
              |       "ts":"$tsWithFormat"
              |    },
-             |    "description": "$AlertPerformed",
+             |    "description": "$AlertPerformedMsg",
              |    "isPerformed": true,
              |    "status": "Email alert success"
              |}
@@ -745,7 +743,7 @@ class NotifierRoutesAlertsTest
              |       },
              |       "ts":"$tsWithFormat"
              |    },
-             |    "description": "$AlertPerformed",
+             |    "description": "$AlertPerformedMsg",
              |    "isPerformed": true,
              |    "status": "Email alert success"
              |}

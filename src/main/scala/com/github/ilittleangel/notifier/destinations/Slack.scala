@@ -1,68 +1,30 @@
 package com.github.ilittleangel.notifier.destinations
 
-import java.net.InetSocketAddress
-
-import akka.http.scaladsl.client.RequestBuilding._
-import akka.http.scaladsl.model.MediaTypes
-import akka.http.scaladsl.model.StatusCodes._
-import akka.http.scaladsl.model.headers.Accept
-import akka.http.scaladsl.settings.{ClientConnectionSettings, ConnectionPoolSettings}
-import akka.http.scaladsl.unmarshalling.Unmarshal
-import akka.http.scaladsl.{ClientTransport, Http}
+import akka.http.scaladsl.model.HttpMethods.POST
+import com.github.ilittleangel.notifier.destinations.clients.HttpClient
+import com.github.ilittleangel.notifier.server.JsonSupport
 import com.typesafe.config.Config
+import spray.json._
 
 import scala.concurrent.Future
 
 
-case object Slack extends Destination {
-
-  private val defaultSettings = ConnectionPoolSettings(system)
+case object Slack extends Destination with HttpClient with JsonSupport {
 
   override def configure(config: Config): Unit = {}
 
   override def send(message: String, props: Map[String, String]): Future[Either[String, String]] = {
-    val body =
-      s"""
-         |{
-         |   "text": "$message"
-         |}
-         |""".stripMargin
-
     try {
-      val customSettings = props.get("proxy") match {
-        case Some(proxy) =>
-          val Array(host, port) = proxy.split(":")
-          val httpsProxyTransport = ClientTransport.httpsProxy(InetSocketAddress.createUnresolved(host, port.toInt))
-          defaultSettings.withConnectionSettings(ClientConnectionSettings(system).withTransport(httpsProxyTransport))
-        case None => defaultSettings
-      }
+      val proxy = props.get("proxy")
+      val url = props("webhook")
+      performHttpRequest(POST, url, payload = Some(Payload(message).toJson), proxy, "Slack alert")
 
-      val httpRequest = Post(uri = props("webhook"), body).addHeader(Accept(MediaTypes.`application/json`))
-      Http().singleRequest(httpRequest, settings = customSettings).flatMap { response =>
-        response.status match {
-          case OK =>
-            val msg = s"Slack webhook request success [status=${response.status}]"
-            log.info(msg)
-            Unmarshal(response.entity).to[String].map(res => Right(s"$msg [$res]"))
-
-          case BadRequest | Forbidden | NotFound | Gone =>
-            val msg = s"Slack webhook request failed [status=${response.status}]"
-            log.error(msg)
-            Unmarshal(response.entity).to[String].map(res => Left(s"$msg [$res]"))
-
-          case _ => Unmarshal(response.entity).to[String].flatMap { entity =>
-            val msg = s"Slack webhook request failed with unknown error [status=${response.status}]"
-            log.error(msg)
-            Future.successful(Left(s"$msg [$entity]"))
-          }
-        }
-      }
     } catch {
       case e: Exception =>
-        val msg = s"Slack alert failed with an Exception [error=${e.getMessage}]"
-        log.error(msg)
-        Future.successful(Left(msg))
+        Future.successful(Left(s"Slack alert failed with an Exception [error=${e.getMessage}]"))
     }
   }
+
+  case class Payload(text: String)
 
 }
