@@ -20,8 +20,9 @@ trait Admin extends Directives with JsonSupport {
   val adminEndpoint = "admin"
 
   val adminRoutes: Route = pathPrefix(adminEndpoint) {
-    path("set-alerts-capacity") {
-        post { parameter("capacity".as[Int]) { capacity => setCapacity(capacity) }}
+    path("alerts" / "capacity") {
+      post { parameter("capacity".as[Int]) { capacity => setCapacity(capacity) }} ~
+      get { getCapacity }
     } ~
     path("logging") {
       post { parameter("level".as[String]) { level => setLogLevel(level) }} ~
@@ -39,6 +40,15 @@ trait Admin extends Directives with JsonSupport {
     object FixedList extends FixedListFactory(capacity)
     alerts = alerts.to(FixedList)
     complete(OK, SuccessResponse(OK, s"Request of change in-memory alerts list capacity to $capacity", remoteAddressInfo(ip)))
+  }
+
+  /**
+   * Inform with the current DimensionalSeq capacity.
+   *
+   * @return a Route to response.
+   */
+  private def getCapacity: Route = {
+    complete(OK, HttpEntity(ContentTypes.`application/json`, s"""{ "capacity": ${alerts.capacity} }"""))
   }
 
   /**

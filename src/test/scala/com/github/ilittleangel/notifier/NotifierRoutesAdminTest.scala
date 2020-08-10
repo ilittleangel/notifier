@@ -30,8 +30,8 @@ class NotifierRoutesAdminTest extends AnyWordSpec
 
   s"NotifierRoutes ($adminEndpoint)" should {
 
-    s"POST '/$basePath/$adminEndpoint' change the capacity of the in-memory alerts list" in {
-      val request = Post(uri = s"/$basePath/$adminEndpoint/set-alerts-capacity?capacity=10")
+    s"POST '/$basePath/$adminEndpoint/alerts/capacity?capacity=10' change the capacity of the in-memory alerts" in {
+      val request = Post(uri = s"/$basePath/$adminEndpoint/alerts/capacity?capacity=10")
 
       // checking HTTP response
       request ~> routes ~> check {
@@ -50,7 +50,26 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       alerts should have size 0
     }
 
-    s"POST '/$basePath/$adminEndpoint' truncate the current alerts list if it is greater" in {
+    s"GET '/$basePath/$adminEndpoint/alerts/capacity' get the in-memory alerts capacity" in {
+      val request = Get(uri = s"/$basePath/$adminEndpoint/alerts/capacity")
+
+      // checking HTTP response
+      request ~> routes ~> check {
+        status shouldBe OK
+        contentType shouldBe ContentTypes.`application/json`
+        responseAs[String] should matchJson(
+          """
+            |{
+            |   "capacity": 10
+            |}
+            |""".stripMargin)
+      }
+
+      // checking alerts in-memory
+      alerts.capacity shouldBe 10
+    }
+
+    s"POST '/$basePath/$adminEndpoint/alerts/capacity?capacity=2' truncate the current alerts list if greater" in {
       /*
        * Steps to test this behaviour:
        * 1. empty the alerts list
@@ -81,12 +100,12 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       alerts should have size 3
 
       // 3
-      Post(uri = s"/$basePath/$adminEndpoint/set-alerts-capacity?capacity=2") ~> routes
+      Post(uri = s"/$basePath/$adminEndpoint/alerts/capacity?capacity=2") ~> routes
 
       alerts should have size 2
     }
 
-    s"POST '/$basePath/$adminEndpoint' be able to reject change an unknown logging level" in {
+    s"POST '/$basePath/$adminEndpoint/logging?level=unknown' be able to reject change an unknown logging level" in {
       val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=unknown")
       request ~> routes ~> check {
         status shouldBe BadRequest
@@ -100,7 +119,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       }
     }
 
-    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to OFF" in {
+    s"POST '/$basePath/$adminEndpoint/logging?level=off' be able to change the logging level to OFF" in {
       val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=off")
       request ~> routes ~> check {
         status shouldBe OK
@@ -114,7 +133,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       log.isInfoEnabled shouldBe false
     }
 
-    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to ERROR" in {
+    s"POST '/$basePath/$adminEndpoint/logging?level=error' be able to change the logging level to ERROR" in {
       val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=error")
       request ~> routes ~> check {
         status shouldBe OK
@@ -129,7 +148,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       log.isErrorEnabled shouldBe true
     }
 
-    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to WARNING" in {
+    s"POST '/$basePath/$adminEndpoint/logging?level=warning' be able to change the logging level to WARNING" in {
       val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=warning")
       request ~> routes ~> check {
         status shouldBe OK
@@ -143,7 +162,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       log.isWarningEnabled shouldBe true
     }
 
-    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to INFO" in {
+    s"POST '/$basePath/$adminEndpoint/logging?level=info' be able to change the logging level to INFO" in {
       val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=info")
       request ~> routes ~> check {
         status shouldBe OK
@@ -157,7 +176,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       log.isInfoEnabled shouldBe true
     }
 
-    s"POST '/$basePath/$adminEndpoint' be able to change the logging level to DEBUG" in {
+    s"POST '/$basePath/$adminEndpoint/logging?level=debug' be able to change the logging level to DEBUG" in {
       val request = Post(uri = s"/$basePath/$adminEndpoint/logging?level=debug")
       request ~> routes ~> check {
         status shouldBe OK
@@ -171,7 +190,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       log.isDebugEnabled shouldBe true
     }
 
-    s"GET '/$basePath/$adminEndpoint' return the current logging level ERROR" in {
+    s"GET '/$basePath/$adminEndpoint/logging?level=error' return the current logging level ERROR" in {
       Post(uri = s"/$basePath/$adminEndpoint/logging?level=error") ~> routes
       Get(uri = s"/$basePath/$adminEndpoint/logging") ~> routes ~> check {
         status shouldBe OK
@@ -185,7 +204,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       }
     }
 
-    s"GET '/$basePath/$adminEndpoint' return the current logging level WARNING" in {
+    s"GET '/$basePath/$adminEndpoint/logging?level=warning' return the current logging level WARNING" in {
       Post(uri = s"/$basePath/$adminEndpoint/logging?level=warning") ~> routes
       Get(uri = s"/$basePath/$adminEndpoint/logging") ~> routes ~> check {
         status shouldBe OK
@@ -199,7 +218,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       }
     }
 
-    s"GET '/$basePath/$adminEndpoint' return the current logging level INFO" in {
+    s"GET '/$basePath/$adminEndpoint/logging?level=info' return the current logging level INFO" in {
       Post(uri = s"/$basePath/$adminEndpoint/logging?level=info") ~> routes
       Get(uri = s"/$basePath/$adminEndpoint/logging") ~> routes ~> check {
         status shouldBe OK
@@ -213,7 +232,7 @@ class NotifierRoutesAdminTest extends AnyWordSpec
       }
     }
 
-    s"GET '/$basePath/$adminEndpoint' return the current logging level DEBUG" in {
+    s"GET '/$basePath/$adminEndpoint/logging?level=debug' return the current logging level DEBUG" in {
       Post(uri = s"/$basePath/$adminEndpoint/logging?level=debug") ~> routes
       Get(uri = s"/$basePath/$adminEndpoint/logging") ~> routes ~> check {
         status shouldBe OK
