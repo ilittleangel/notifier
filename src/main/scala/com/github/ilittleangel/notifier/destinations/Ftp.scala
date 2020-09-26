@@ -4,14 +4,14 @@ import java.io.IOException
 
 import akka.stream.IOResult
 import com.github.ilittleangel.notifier.config.FtpConfig
-import com.github.ilittleangel.notifier.destinations.ftp.AlpakkaFtpClient
+import com.github.ilittleangel.notifier.destinations.clients.FtpClient
 import com.typesafe.config.Config
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
 
-case object Ftp extends Destination with AlpakkaFtpClient {
+case object Ftp extends Destination with FtpClient {
 
   private var ftpConfig: FtpConfig = _
 
@@ -36,26 +36,18 @@ case object Ftp extends Destination with AlpakkaFtpClient {
 
       upload(s"$message\n", path, host, port.toInt, user, pass, prot, privateKey).flatMap {
         case IOResult(count, Success(value)) =>
-          val msg = s"Ftp alert success [value=$value, count=$count]"
-          log.info(msg)
-          Future.successful(msg).map(Right(_))
+          Future.successful(s"Ftp alert success [value=$value, count=$count]").map(Right(_))
 
         case IOResult(count, Failure(exception)) =>
-          val msg = s"Ftp alert failed with IOResult[error=${exception.getMessage}, count=$count]"
-          log.error(msg)
-          Future.successful(Left(msg))
+          Future.successful(Left(s"Ftp alert failed with IOResult[error=${exception.getMessage}, count=$count]"))
 
         case _ =>
-          val msg = "Ftp alert failed with unknown error"
-          log.error(msg)
-          Future.failed(new IOException(msg))
+          Future.failed(new IOException("Ftp alert failed with unknown error"))
       }
     }
     catch {
       case e: Exception =>
-        val msg = s"Ftp alert failed with an Exception [error=${e.getMessage}]"
-        log.error(msg)
-        Future.successful(Left(msg))
+        Future.successful(Left(s"Ftp alert failed with an Exception [error=${e.getMessage}]"))
     }
   }
 

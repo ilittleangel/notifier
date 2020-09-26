@@ -5,9 +5,9 @@ services:
     container_name: notifier
     image: angelrojo/notifier:latest
     environment:
-      SFTP_PRIVATE_KEY: /home/notifier/.ssh/id_rsa
+      - EMAIL_USER_PASS=
     volumes:
-      - ../../conf:/opt/config
+      - ./notifier/conf:/opt/notifier/conf
       - ./ftp/sftpd/id_rsa:/home/notifier/.ssh/id_rsa:ro
     ports:
       - "8081:8080"
@@ -26,6 +26,15 @@ services:
     ports:
       - "2222:22"
     command: notifier:password:2000:2000
+    networks:
+      - notifier-net
+
+  email:
+    container_name: smtp-server
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
     networks:
       - notifier-net
 

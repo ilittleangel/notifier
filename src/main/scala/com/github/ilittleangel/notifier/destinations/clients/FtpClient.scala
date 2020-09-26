@@ -1,4 +1,4 @@
-package com.github.ilittleangel.notifier.destinations.ftp
+package com.github.ilittleangel.notifier.destinations.clients
 
 import java.io.{File, PrintWriter}
 import java.net.InetAddress
@@ -9,14 +9,13 @@ import akka.stream.alpakka.ftp.{FtpCredentials, FtpSettings, SftpIdentity, SftpS
 import akka.stream.scaladsl.{FileIO, Source}
 import akka.stream.{ActorMaterializer, IOResult}
 import akka.util.ByteString
-import com.github.ilittleangel.notifier.server.NotifierServer
 import org.apache.commons.net.PrintCommandListener
 import org.apache.commons.net.ftp.FTPClient
 
 import scala.concurrent.{ExecutionContext, Future}
 
 
-trait AlpakkaFtpClient {
+trait FtpClient {
 
   /**
    * Public API for uploading files.
@@ -48,9 +47,9 @@ trait AlpakkaFtpClient {
     }
   }
 
-  private implicit val system: ActorSystem = NotifierServer.system
-  private implicit val materializer: ActorMaterializer = NotifierServer.materializer
-  private implicit val executionContext: ExecutionContext = NotifierServer.executionContext
+  implicit def system: ActorSystem
+  implicit def materializer: ActorMaterializer
+  implicit def executionContext: ExecutionContext
 
   private val settings = (protocol: String, host: String, port: Int, user: String, pass: String, privateKey: Option[String]) =>
     protocol.toLowerCase() match {

@@ -1,4 +1,4 @@
-# Troubleshooting Errors
+# Troubleshooting
 
 * [Malformed requests](#malformed-requests)
 * [Ftp errors](#ftp-errors)

@@ -24,6 +24,8 @@ dependencies {
     compile "com.typesafe.akka:akka-http-spray-json_$scalaMajor:$akkaHttpVersion"
     compile "com.lightbend.akka:akka-stream-alpakka-ftp_$scalaMajor:$alpakkaVersion"
     compile "com.github.scopt:scopt_$scalaMajor:$scoptVersion"
+    compile "com.sun.mail:javax.mail:$javaxMailVersion"
+    compile "javax.mail:javax.mail-api:$javaxMailVersion"
 
     // uncomment for debug logging in the sftp client
     //runtime "ch.qos.logback:logback-classic:1.2.3"
@@ -33,7 +35,8 @@ dependencies {
     testCompile "com.typesafe.akka:akka-http-testkit_$scalaMajor:$akkaHttpVersion"
     testCompile "com.typesafe.akka:akka-stream-testkit_$scalaMajor:$akkaStreamVersion"
     testCompile "com.stephenn:scalatest-circe_$scalaMajor:$scalatestCirceVersion"
-    testCompile "com.github.stefanbirkner:fake-sftp-server-lambda:$fakeSftpServerVersion"
+    testCompile "org.mockftpserver:MockFtpServer:$mockFtpServerVersion"
+    testCompile "com.icegreen:greenmail:$greenmailVersion"
     testCompile "junit:junit:$junitVersion"
 }
 

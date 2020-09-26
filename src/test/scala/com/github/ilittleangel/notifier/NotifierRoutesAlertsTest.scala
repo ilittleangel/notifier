@@ -1,7 +1,6 @@
 package com.github.ilittleangel.notifier
 
 import java.net.InetAddress
-import java.nio.charset.Charset
 import java.time.Instant
 
 import akka.http.scaladsl.model.StatusCodes._
@@ -9,40 +8,66 @@ import akka.http.scaladsl.model.headers.`Remote-Address`
 import akka.http.scaladsl.model.{ContentTypes, HttpEntity, RemoteAddress}
 import akka.http.scaladsl.testkit.{RouteTestTimeout, ScalatestRouteTest}
 import akka.util.Timeout
-import com.github.ilittleangel.notifier.destinations.Ftp
+import com.github.ilittleangel.notifier.Constants._
+import com.github.ilittleangel.notifier.destinations.{Email, Ftp}
 import com.github.ilittleangel.notifier.server.NotifierRoutes
-import com.github.ilittleangel.notifier.utils.Eithers.separator
-import com.github.ilittleangel.notifier.utils.FixedList
-import com.github.stefanbirkner.fakesftpserver.lambda.FakeSftpServer.withSftpServer
+import com.icegreen.greenmail.util.ServerSetupTest
 import com.stephenn.scalatest.circe.JsonMatchers
 import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
+import javax.mail.Message
+import javax.mail.internet.InternetAddress
 import org.junit.runner.RunWith
-import org.scalatest.BeforeAndAfterAll
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
+import org.scalatest.{BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatestplus.junit.JUnitRunner
 
 import scala.concurrent.duration.DurationInt
 
 
 @RunWith(classOf[JUnitRunner])
-class NotifierRoutesTest extends AnyWordSpec
-  with Matchers with ScalatestRouteTest with JsonMatchers with NotifierRoutes with BeforeAndAfterAll {
+class NotifierRoutesAlertsTest
+  extends AnyWordSpec
+    with Matchers
+    with ScalatestRouteTest
+    with JsonMatchers
+    with NotifierRoutes
+    with BeforeAndAfterAll
+    with BeforeAndAfterEach
+    with MockFtp
+    with MockMail {
 
   private val routes = notifierRoutes
   private val ts = Instant.now()
   private val tsWithFormat = formatter.format(ts)
-  private val username = "notifier"
-  private val password = "password"
-  private val port = 2223
-  private val homeDirectory = "/tmp"
 
   override def beforeAll(): Unit = {
     val config = ConfigFactory.empty()
       .withValue("ftp.username", ConfigValueFactory.fromAnyRef(username))
       .withValue("ftp.password", ConfigValueFactory.fromAnyRef(password))
+      .withValue("email.server", ConfigValueFactory.fromAnyRef("localhost"))
+      .withValue("email.port", ConfigValueFactory.fromAnyRef(ServerSetupTest.SMTP.getPort))
+      .withValue("email.user", ConfigValueFactory.fromAnyRef(emailUser))
+      .withValue("email.pass", ConfigValueFactory.fromAnyRef(emailPass))
+      .withValue("email.ttls", ConfigValueFactory.fromAnyRef(false))
+      .withValue("email.html.button.enable", ConfigValueFactory.fromAnyRef(true))
+      .withValue("email.html.button.name", ConfigValueFactory.fromAnyRef("notifier"))
+      .withValue("email.html.button.link", ConfigValueFactory.fromAnyRef("http://localhost:8080/whatever"))
 
     Ftp.configure(config)
+    ftpServer.start()
+
+    Email.configure(config)
+    mailServer.start()
+  }
+
+  override def afterAll(): Unit = {
+    ftpServer.stop()
+    mailServer.stop()
+  }
+
+  override def afterEach(): Unit = {
+    mailServer.purgeEmailFromAllMailboxes()
   }
 
   private implicit val testTimeout: RouteTestTimeout = RouteTestTimeout(Timeout(10.seconds).duration)
@@ -78,10 +103,9 @@ class NotifierRoutesTest extends AnyWordSpec
         responseAs[String] should matchJson(
           s"""
             |{
-            |   "status": ${BadRequest.intValue},
-            |   "statusText": "${BadRequest.reason}",
-            |   "reason": "Slack alert with no properties",
-            |   "possibleSolution": "Include properties with 'webhook' url"
+            |   "status": "400 Bad Request",
+            |   "reason": "Some of these destinations List(Slack) has no properties",
+            |   "possibleSolution": "Include required properties. See documentation"
             |}
             |""".stripMargin)
       }
@@ -106,10 +130,9 @@ class NotifierRoutesTest extends AnyWordSpec
         responseAs[String] should matchJson(
           s"""
             |{
-            |   "status": ${BadRequest.intValue},
-            |   "statusText": "${BadRequest.reason}",
-            |   "reason": "Ftp alert with no properties",
-            |   "possibleSolution": "Include properties with 'host' and 'path'"
+            |   "status": "400 Bad Request",
+            |   "reason": "Some of these destinations List(Ftp) has no properties",
+            |   "possibleSolution": "Include required properties. See documentation"
             |}
             |""".stripMargin)
       }
@@ -118,12 +141,6 @@ class NotifierRoutesTest extends AnyWordSpec
     }
 
     s"POST '/$basePath/$alertsEndpoint' be able to accept successful alerts" in {
-      withSftpServer { server =>
-
-        server.addUser(username, password)
-        server.setPort(port)
-        server.putFile(s"$homeDirectory/data.txt", "something before", Charset.forName("UTF-8"))
-
         val requestBody =
           s"""
              |{
@@ -132,7 +149,7 @@ class NotifierRoutesTest extends AnyWordSpec
              |   "properties": {
              |       "host": "localhost",
              |       "port": "$port",
-             |       "protocol": "sftp",
+             |       "protocol": "ftp",
              |       "path": "$homeDirectory/data.txt"
              |   },
              |   "ts": "$tsWithFormat"
@@ -155,14 +172,14 @@ class NotifierRoutesTest extends AnyWordSpec
                |      "properties": {
                |          "host": "localhost",
                |          "port": "$port",
-               |          "protocol": "sftp",
+               |          "protocol": "ftp",
                |          "path": "$homeDirectory/data.txt"
                |      },
                |      "ts": "$tsWithFormat"
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]",
-               |   "description": "$AlertPerformed"
+               |   "description": "$AlertPerformedMsg"
                |}
                |""".stripMargin)
         }
@@ -170,28 +187,19 @@ class NotifierRoutesTest extends AnyWordSpec
         // checking alerts memory storage
         alerts should have size 1
         alerts.last.isPerformed shouldBe true
-        alerts.last.description shouldBe AlertPerformed
+        alerts.last.description shouldBe AlertPerformedMsg
         alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]"
         alerts.last.alert.destination shouldBe List(Ftp)
         alerts.last.alert.ts shouldBe Some(ts)
         alerts.last.alert.message shouldBe "alarm process 1"
 
-        // checking sftp destination
-        val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
+        // checking ftp destination
+        val fileContent = ftpServer.readFile(s"$homeDirectory/data.txt")
         fileContent should include("something before")
         fileContent should include("alarm process 1")
-
-        server.deleteAllFilesAndDirectories()
-      }
     }
 
     s"POST '/$basePath/$alertsEndpoint' be able to accept alerts with no timestamp using the default" in {
-      withSftpServer { server =>
-
-        server.addUser(username, password)
-        server.setPort(port)
-        server.putFile(s"$homeDirectory/data.txt", "something before", Charset.forName("UTF-8"))
-
         val requestBody =
           s"""
              |{
@@ -200,7 +208,7 @@ class NotifierRoutesTest extends AnyWordSpec
              |   "properties": {
              |       "host": "localhost",
              |       "port": "$port",
-             |       "protocol": "sftp",
+             |       "protocol": "ftp",
              |       "path": "$homeDirectory/data.txt"
              |   }
              |}
@@ -222,14 +230,14 @@ class NotifierRoutesTest extends AnyWordSpec
                |      "properties": {
                |          "host": "localhost",
                |          "port": "$port",
-               |          "protocol": "sftp",
+               |          "protocol": "ftp",
                |          "path": "$homeDirectory/data.txt"
                |      },
                |      "ts": "${formatter.format(alerts.last.alert.ts.get)}"
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]",
-               |   "description": "$AlertPerformed"
+               |   "description": "$AlertPerformedMsg"
                |}
                |""".stripMargin)
         }
@@ -237,27 +245,18 @@ class NotifierRoutesTest extends AnyWordSpec
         // checking alerts memory storage
         alerts should have size 2
         alerts.last.isPerformed shouldBe true
-        alerts.last.description shouldBe AlertPerformed
+        alerts.last.description shouldBe AlertPerformedMsg
         alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]"
         alerts.last.alert.destination shouldBe List(Ftp)
         alerts.last.alert.message shouldBe "alarm process 2"
 
-        // checking sftp destination
-        val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
+        // checking ftp destination
+        val fileContent = ftpServer.readFile(s"$homeDirectory/data.txt")
         fileContent should include("something before")
         fileContent should include("alarm process 2")
-
-        server.deleteAllFilesAndDirectories()
-      }
     }
 
     s"POST '/$basePath/$alertsEndpoint' be able to accept alerts not performed" in {
-      withSftpServer { server =>
-
-        server.addUser(username, password)
-        server.setPort(port)
-        server.putFile(s"$homeDirectory/data.txt", "something before", Charset.forName("UTF-8"))
-
         val requestBody =
           s"""
              |{
@@ -296,7 +295,7 @@ class NotifierRoutesTest extends AnyWordSpec
                |   },
                |   "isPerformed": false,
                |   "status": "Ftp alert failed with an Exception [error=unsupported protocol]",
-               |   "description": "$AlertNotPerformed"
+               |   "description": "$AlertNotPerformedMsg"
                |}
                |""".stripMargin)
         }
@@ -304,18 +303,15 @@ class NotifierRoutesTest extends AnyWordSpec
         // checking alerts memory storage
         alerts should have size 3
         alerts.last.isPerformed shouldBe false
-        alerts.last.description shouldBe AlertNotPerformed
+        alerts.last.description shouldBe AlertNotPerformedMsg
         alerts.last.status shouldBe "Ftp alert failed with an Exception [error=unsupported protocol]"
         alerts.last.alert.destination shouldBe List(Ftp)
         alerts.last.alert.message shouldBe "alarm process 3"
 
-        // checking sftp destination
-        val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
+        // checking ftp destination
+        val fileContent = ftpServer.readFile(s"$homeDirectory/data.txt")
         fileContent should include("something before")
         fileContent shouldNot include("alarm process 3")
-
-        server.deleteAllFilesAndDirectories()
-      }
     }
 
     s"GET '/$basePath/$alertsEndpoint' return a list of alerts in reverse order in which they were received" in {
@@ -341,7 +337,7 @@ class NotifierRoutesTest extends AnyWordSpec
             |      },
             |      "isPerformed": false,
             |      "status": "Ftp alert failed with an Exception [error=unsupported protocol]",
-            |      "description": "$AlertNotPerformed"
+            |      "description": "$AlertNotPerformedMsg"
             |   },
             |   {
             |      "alert": {
@@ -350,14 +346,14 @@ class NotifierRoutesTest extends AnyWordSpec
             |         "properties": {
             |             "host": "localhost",
             |             "port": "$port",
-            |             "protocol": "sftp",
+            |             "protocol": "ftp",
             |             "path": "$homeDirectory/data.txt"
             |         },
             |         "ts": "${formatter.format(alerts(1).alert.ts.get)}"
             |      },
             |      "isPerformed": true,
             |      "status": "Ftp alert success [value=Done, count=16]",
-            |      "description": "$AlertPerformed"
+            |      "description": "$AlertPerformedMsg"
             |   },
             |   {
             |      "alert": {
@@ -366,14 +362,14 @@ class NotifierRoutesTest extends AnyWordSpec
             |         "properties": {
             |             "host": "localhost",
             |             "port": "$port",
-            |             "protocol": "sftp",
+            |             "protocol": "ftp",
             |             "path": "$homeDirectory/data.txt"
             |         },
             |         "ts": "$tsWithFormat"
             |      },
             |      "isPerformed": true,
             |      "status": "Ftp alert success [value=Done, count=16]",
-            |      "description": "$AlertPerformed"
+            |      "description": "$AlertPerformedMsg"
             |   }
             |]
             |""".stripMargin)
@@ -396,10 +392,9 @@ class NotifierRoutesTest extends AnyWordSpec
         responseAs[String] should matchJson(
           s"""
              |{
-             |   "status": ${BadRequest.intValue},
-             |   "statusText": "${BadRequest.reason}",
-             |   "reason": "Slack alert with no properties",
-             |   "possibleSolution": "Include properties with 'webhook' url",
+             |   "status": "400 Bad Request",
+             |   "reason": "Some of these destinations List(Slack) has no properties",
+             |   "possibleSolution": "Include required properties. See documentation",
              |   "clientIp": "localhost - 127.0.0.1"
              |}
              |""".stripMargin)
@@ -419,13 +414,7 @@ class NotifierRoutesTest extends AnyWordSpec
     }
 
     s"POST '/$basePath/$alertsEndpoint' be able to accept multi destination alerts" in {
-      val alarmMessage = "alarm process 4"
-      withSftpServer { server =>
-
-        server.addUser(username, password)
-        server.setPort(port)
-        server.putFile(s"$homeDirectory/data.txt", "something before", Charset.forName("UTF-8"))
-
+        val alarmMessage = "alarm process 4"
         val requestBody =
           s"""
              |{
@@ -434,7 +423,7 @@ class NotifierRoutesTest extends AnyWordSpec
              |   "properties": {
              |          "host": "localhost",
              |          "port": "$port",
-             |          "protocol": "sftp",
+             |          "protocol": "ftp",
              |          "path": "$homeDirectory/data.txt"
              |   },
              |   "ts": "$tsWithFormat"
@@ -460,14 +449,14 @@ class NotifierRoutesTest extends AnyWordSpec
                |      "properties": {
                |          "host": "localhost",
                |          "port": "$port",
-               |          "protocol": "sftp",
+               |          "protocol": "ftp",
                |          "path": "$homeDirectory/data.txt"
                |      },
                |      "ts": "$tsWithFormat"
                |   },
                |   "isPerformed": true,
                |   "status": "Ftp alert success [value=Done, count=16]; Ftp alert success [value=Done, count=16]",
-               |   "description": "$AlertPerformed"
+               |   "description": "$AlertPerformedMsg"
                |}
                |""".stripMargin)
         }
@@ -475,17 +464,15 @@ class NotifierRoutesTest extends AnyWordSpec
         // checking alerts in-memory
         alerts should have size 1
         alerts.last.isPerformed shouldBe true
-        alerts.last.description shouldBe AlertPerformed
+        alerts.last.description shouldBe AlertPerformedMsg
         alerts.last.status.split(separator).length shouldBe 2
         alerts.last.status shouldBe "Ftp alert success [value=Done, count=16]; Ftp alert success [value=Done, count=16]"
         alerts.last.alert.destination shouldBe List(Ftp, Ftp)
         alerts.last.alert.message shouldBe alarmMessage
 
-        // checking sftp destination
-        val fileContent = server.getFileContent(s"$homeDirectory/data.txt", Charset.forName("UTF-8"))
+        // checking ftp destination
+        val fileContent = ftpServer.readFile(s"$homeDirectory/data.txt")
         fileContent.toSeq.sliding(alarmMessage.length).map(_.unwrap).count(_ == alarmMessage) shouldBe 2
-        server.deleteAllFilesAndDirectories()
-      }
     }
 
     s"POST '/$basePath/$alertsEndpoint' return a Not Performed alert if one or more multi destinations fail" in {
@@ -531,7 +518,7 @@ class NotifierRoutesTest extends AnyWordSpec
              |   },
              |   "isPerformed": false,
              |   "status": "$failedStatus$separator$failedStatus",
-             |   "description": "$AlertNotPerformed"
+             |   "description": "$AlertNotPerformedMsg"
              |}
              |""".stripMargin)
       }
@@ -539,76 +526,243 @@ class NotifierRoutesTest extends AnyWordSpec
       // checking alerts in-memory
       alerts should have size 2
       alerts.last.isPerformed shouldBe false
-      alerts.last.description shouldBe AlertNotPerformed
+      alerts.last.description shouldBe AlertNotPerformedMsg
       alerts.last.status shouldBe failedStatus + separator + failedStatus
       alerts.last.alert.destination shouldBe List(Ftp, Ftp)
       alerts.last.alert.message shouldBe "alarm process 5"
     }
 
-  }
+    s"POST '/$basePath/$alertsEndpoint' be able to accept Email alerts" in {
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "Email",
+           |   "message": "alarm process",
+           |   "properties": {
+           |       "email_to": "business@email.com",
+           |       "subject": "test notifier"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
 
-  s"NotifierRoutes ($adminEndpoint)" should {
-
-    s"POST '/$basePath/$adminEndpoint' change the capacity of the in-memory alerts list" in {
-      val request = Post(uri = s"/$basePath/$adminEndpoint/set-alerts-capacity?capacity=10")
-
-      // checking HTTP response
       request ~> routes ~> check {
         status shouldBe OK
-        contentType shouldBe ContentTypes.`application/json`
         responseAs[String] should matchJson(
           s"""
              |{
-             |    "reason": "Request of change in-memory alerts list capacity to 10",
-             |    "status": ${OK.intValue},
-             |    "statusText": "${OK.reason}"
+             |   "alert": {
+             |   "destination": ["email"],
+             |       "message": "alarm process",
+             |       "properties": {
+             |           "email_to": "business@email.com",
+             |           "subject": "test notifier"
+             |       },
+             |       "ts":"$tsWithFormat"
+             |    },
+             |    "description": "$AlertPerformedMsg",
+             |    "isPerformed": true,
+             |    "status": "Email alert success"
              |}
              |""".stripMargin)
       }
 
-      // checking alerts in-memory
-      alerts should have size 2
-      alerts.last.isPerformed shouldBe false
-      alerts.last.description shouldBe AlertNotPerformed
-      alerts.last.alert.destination shouldBe List(Ftp, Ftp)
-      alerts.last.alert.message shouldBe "alarm process 5"
+      mailServer.waitForIncomingEmail(emailTimeout, 1)
+
+      val messages = mailServer.getReceivedMessages.toList
+      messages should not be empty
+      messages should have size 1
+      messages.head.getSubject shouldBe "test notifier"
+      messages.head.getContentType should include ("text/html")
+      messages.head.getContent.toString should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.head.getContent.toString should include ("http://localhost:8080/whatever")
+      messages.head.getContent.toString should include ("style=\"visibility:visible;")
+      messages.head.getContent.toString should include ("href=\"http://localhost:8080/whatever\">OPEN notifier</a>")
+      messages.head.getFrom.toList.head shouldBe new InternetAddress(emailUser)
+      messages.head.getAllRecipients.toList.head shouldBe new InternetAddress("business@email.com")
     }
 
-    s"POST '/$basePath/$adminEndpoint' truncate the current alerts list if it is greater" in {
-      /*
-       * Steps to test this behaviour:
-       * 1. empty the alerts list
-       * 2. simulate alerts requests (the current capacity is 10 because of the previous test)
-       * 3. change the capacity to 5 and check
-       */
+    s"POST '/$basePath/$alertsEndpoint' be able to accept Email alerts with multi TO address" in {
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "Email",
+           |   "message": "alarm process",
+           |   "properties": {
+           |       "email_to": "business1@email.com, business2@email.com",
+           |       "subject": "test notifier"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
 
-      // 1
-      alerts = new FixedList[ActionPerformed](capacity = 3)
-      alerts should have size 0
-
-      // 2
-      (1 to 5).foreach { i =>
-        val requestBody =
+      request ~> routes ~> check {
+        status shouldBe OK
+        responseAs[String] should matchJson(
           s"""
              |{
-             |   "destination": "ftp",
-             |   "message": "alarm process $i",
-             |   "properties": {},
-             |   "ts": "$tsWithFormat"
+             |   "alert": {
+             |   "destination": ["email"],
+             |       "message": "alarm process",
+             |       "properties": {
+             |           "email_to": "business1@email.com, business2@email.com",
+             |           "subject": "test notifier"
+             |       },
+             |       "ts":"$tsWithFormat"
+             |    },
+             |    "description": "$AlertPerformedMsg",
+             |    "isPerformed": true,
+             |    "status": "Email alert success"
              |}
-             |""".stripMargin
-
-        val httpEntity = HttpEntity(ContentTypes.`application/json`, requestBody)
-        Post(uri = s"/$basePath/$alertsEndpoint", httpEntity) ~> routes
+             |""".stripMargin)
       }
 
-      alerts should have size 3
+      mailServer.waitForIncomingEmail(emailTimeout, 2)
 
-      // 3
-      Post(uri = s"/$basePath/$adminEndpoint/set-alerts-capacity?capacity=2") ~> routes
-
-      alerts should have size 2
+      val messages = mailServer.getReceivedMessages.toList
+      messages should not be empty
+      messages should have size 2
+      messages.head.getSubject shouldBe "test notifier"
+      messages.last.getSubject shouldBe "test notifier"
+      messages.head.getContent.toString should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.last.getContent.toString should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.head.getFrom.toList.head shouldBe new InternetAddress(emailUser)
+      messages.last.getFrom.toList.head shouldBe new InternetAddress(emailUser)
+      messages.head.getAllRecipients.toList shouldBe List(
+        new InternetAddress("business1@email.com"),
+        new InternetAddress("business2@email.com")
+      )
+      messages.last.getAllRecipients.toList shouldBe List(
+        new InternetAddress("business1@email.com"),
+        new InternetAddress("business2@email.com")
+      )
     }
+
+    s"POST '/$basePath/$alertsEndpoint' be able to accept Email alerts with multi CC address" in {
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "Email",
+           |   "message": "alarm process",
+           |   "properties": {
+           |       "email_to": "business1@email.com, business2@email.com",
+           |       "email_cc": "business3@email.com, business4@email.com",
+           |       "subject": "test notifier"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
+
+      request ~> routes ~> check {
+        status shouldBe OK
+        responseAs[String] should matchJson(
+          s"""
+             |{
+             |   "alert": {
+             |   "destination": ["email"],
+             |       "message": "alarm process",
+             |       "properties": {
+             |           "email_to": "business1@email.com, business2@email.com",
+             |           "email_cc": "business3@email.com, business4@email.com",
+             |           "subject": "test notifier"
+             |       },
+             |       "ts":"$tsWithFormat"
+             |    },
+             |    "description": "$AlertPerformedMsg",
+             |    "isPerformed": true,
+             |    "status": "Email alert success"
+             |}
+             |""".stripMargin)
+      }
+
+      mailServer.waitForIncomingEmail(emailTimeout, 4)
+
+      val messages = mailServer.getReceivedMessages.toList
+      messages should not be empty
+      messages should have size 4
+      messages.map(_.getSubject).distinct shouldBe List("test notifier")
+      messages.map(_.getContent.toString).distinct should have size 1
+      messages.map(_.getContent.toString).distinct.head should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.flatMap(_.getFrom).distinct shouldBe List(new InternetAddress(emailUser))
+      messages.head.getRecipients(Message.RecipientType.TO).toList shouldBe List(
+        new InternetAddress("business1@email.com"),
+        new InternetAddress("business2@email.com")
+      )
+      messages.head.getRecipients(Message.RecipientType.CC).toList shouldBe List(
+        new InternetAddress("business3@email.com"),
+        new InternetAddress("business4@email.com")
+      )
+    }
+
+    s"POST '/$basePath/$alertsEndpoint' be able to accept Email alerts with no authentication" in {
+      // remove users but not necessary
+      mailServer.reset()
+
+      // configure with a passwordless configuration the Email destination
+      val config = ConfigFactory.parseString(
+        s"""
+           |email {
+           |    server: "127.0.0.1"
+           |    port: ${ServerSetupTest.SMTP.getPort}
+           |    user: "$emailUser"
+           |    ttls: false
+           |    html.button.enable: false
+           |}
+           |""".stripMargin)
+
+      Email.configure(config)
+
+      val requestBody =
+        s"""
+           |{
+           |   "destination": "Email",
+           |   "message": "alarm process",
+           |   "properties": {
+           |       "email_to": "business@email.com",
+           |       "subject": "test notifier"
+           |   },
+           |   "ts": "$tsWithFormat"
+           |}
+           |""".stripMargin
+      val request = Post(uri = s"/$basePath/$alertsEndpoint", HttpEntity(ContentTypes.`application/json`, requestBody))
+
+      request ~> routes ~> check {
+        status shouldBe OK
+        responseAs[String] should matchJson(
+          s"""
+             |{
+             |   "alert": {
+             |   "destination": ["email"],
+             |       "message": "alarm process",
+             |       "properties": {
+             |           "email_to": "business@email.com",
+             |           "subject": "test notifier"
+             |       },
+             |       "ts":"$tsWithFormat"
+             |    },
+             |    "description": "$AlertPerformedMsg",
+             |    "isPerformed": true,
+             |    "status": "Email alert success"
+             |}
+             |""".stripMargin)
+      }
+
+      mailServer.waitForIncomingEmail(emailTimeout, 1)
+
+      val messages = mailServer.getReceivedMessages.toList
+      messages should not be empty
+      messages should have size 1
+      messages.head.getSubject shouldBe "test notifier"
+      messages.head.getContentType should include ("text/html")
+      messages.head.getContent.toString should include (List("alarm", "process").mkString("&nbsp;"))
+      messages.head.getContent.toString should include ("style=\"visibility:hidden;")
+      messages.head.getFrom.toList.head shouldBe new InternetAddress(emailUser)
+      messages.head.getAllRecipients.toList.head shouldBe new InternetAddress("business@email.com")
+    }
+
   }
 
 }
